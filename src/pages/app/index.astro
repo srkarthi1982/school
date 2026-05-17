@@ -1,6 +1,6 @@
 ---
 import { actions } from "astro:actions";
-import { AvButton, AvCard, AvConfirmDialog, AvContainer, AvInput, AvSelect } from "@ansiversa/components";
+import { AvButton, AvCard, AvConfirmDialog, AvContainer, AvIcon, AvInput, AvSelect } from "@ansiversa/components";
 import AppShell from "../../layouts/AppShell.astro";
 import SettingsDrawer from "../../components/drawers/SettingsDrawer.astro";
 import { APP_META } from "../../app.meta";
@@ -395,12 +395,30 @@ const tabs = [
                   </template>
                   <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
                     <article class="school-foundation__row">
-                      <strong x-text="item.name"></strong>
-                      <span class="av-text-soft">Order <span x-text="item.sortOrder"></span></span>
-                      <div class="school-foundation__row-actions">
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openClassEditDrawer(item); $store.appDrawer.open('class')">Edit</AvButton>
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('class', item.id, item.name)">Delete</AvButton>
+                      <div class="school-foundation__row-title">
+                        <strong x-text="item.name"></strong>
+                        <div class="school-foundation__row-actions">
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button"
+                            title="Edit class"
+                            aria-label="Edit class"
+                            @click.prevent="$store.schoolFoundation.openClassEditDrawer(item); $store.appDrawer.open('class')"
+                          >
+                            <AvIcon name="edit" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button school-foundation__icon-button--danger"
+                            title="Delete class"
+                            aria-label="Delete class"
+                            @click.prevent="$store.schoolFoundation.openDeleteConfirm('class', item.id, item.name)"
+                          >
+                            <AvIcon name="trash" size="sm" />
+                          </button>
+                        </div>
                       </div>
+                      <span class="av-text-soft">Order <span x-text="item.sortOrder"></span></span>
                     </article>
                   </template>
                 </div>
@@ -427,12 +445,30 @@ const tabs = [
                   </template>
                   <template x-for="item in $store.schoolFoundation.sections" :key="item.id">
                     <article class="school-foundation__row">
-                      <strong x-text="item.name"></strong>
-                      <span class="av-text-soft" x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
-                      <div class="school-foundation__row-actions">
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openSectionEditDrawer(item); $store.appDrawer.open('section')">Edit</AvButton>
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('section', item.id, item.name)">Delete</AvButton>
+                      <div class="school-foundation__row-title">
+                        <strong x-text="item.name"></strong>
+                        <div class="school-foundation__row-actions">
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button"
+                            title="Edit section"
+                            aria-label="Edit section"
+                            @click.prevent="$store.schoolFoundation.openSectionEditDrawer(item); $store.appDrawer.open('section')"
+                          >
+                            <AvIcon name="edit" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button school-foundation__icon-button--danger"
+                            title="Delete section"
+                            aria-label="Delete section"
+                            @click.prevent="$store.schoolFoundation.openDeleteConfirm('section', item.id, item.name)"
+                          >
+                            <AvIcon name="trash" size="sm" />
+                          </button>
+                        </div>
                       </div>
+                      <span class="av-text-soft" x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
                     </article>
                   </template>
                 </div>
@@ -459,12 +495,30 @@ const tabs = [
                   </template>
                   <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
                     <article class="school-foundation__row">
-                      <strong x-text="item.name"></strong>
-                      <span class="av-text-soft" x-text="item.code || '-'"></span>
-                      <div class="school-foundation__row-actions">
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openSubjectEditDrawer(item); $store.appDrawer.open('subject')">Edit</AvButton>
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('subject', item.id, item.name)">Delete</AvButton>
+                      <div class="school-foundation__row-title">
+                        <strong x-text="item.name"></strong>
+                        <div class="school-foundation__row-actions">
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button"
+                            title="Edit subject"
+                            aria-label="Edit subject"
+                            @click.prevent="$store.schoolFoundation.openSubjectEditDrawer(item); $store.appDrawer.open('subject')"
+                          >
+                            <AvIcon name="edit" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button school-foundation__icon-button--danger"
+                            title="Delete subject"
+                            aria-label="Delete subject"
+                            @click.prevent="$store.schoolFoundation.openDeleteConfirm('subject', item.id, item.name)"
+                          >
+                            <AvIcon name="trash" size="sm" />
+                          </button>
+                        </div>
                       </div>
+                      <span class="av-text-soft" x-text="item.code || '-'"></span>
                     </article>
                   </template>
                 </div>
@@ -491,7 +545,29 @@ const tabs = [
                   </template>
                   <template x-for="item in $store.schoolFoundation.students" :key="item.id">
                     <article class="school-foundation__row">
-                      <strong x-text="item.fullName"></strong>
+                      <div class="school-foundation__row-title">
+                        <strong x-text="item.fullName"></strong>
+                        <div class="school-foundation__row-actions">
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button"
+                            title="Edit student"
+                            aria-label="Edit student"
+                            @click.prevent="$store.schoolFoundation.openStudentEditDrawer(item); $store.appDrawer.open('student')"
+                          >
+                            <AvIcon name="edit" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button school-foundation__icon-button--danger"
+                            title="Delete student"
+                            aria-label="Delete student"
+                            @click.prevent="$store.schoolFoundation.openDeleteConfirm('student', item.id, item.fullName)"
+                          >
+                            <AvIcon name="trash" size="sm" />
+                          </button>
+                        </div>
+                      </div>
                       <span class="av-text-soft">
                         <span x-text="item.admissionNumber"></span>
                         ·
@@ -499,10 +575,6 @@ const tabs = [
                         /
                         <span x-text="$store.schoolFoundation.getSectionName(item.sectionId)"></span>
                       </span>
-                      <div class="school-foundation__row-actions">
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openStudentEditDrawer(item); $store.appDrawer.open('student')">Edit</AvButton>
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('student', item.id, item.fullName)">Delete</AvButton>
-                      </div>
                     </article>
                   </template>
                 </div>
@@ -529,16 +601,34 @@ const tabs = [
                   </template>
                   <template x-for="item in $store.schoolFoundation.teachers" :key="item.id">
                     <article class="school-foundation__row">
-                      <strong x-text="item.fullName"></strong>
+                      <div class="school-foundation__row-title">
+                        <strong x-text="item.fullName"></strong>
+                        <div class="school-foundation__row-actions">
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button"
+                            title="Edit teacher"
+                            aria-label="Edit teacher"
+                            @click.prevent="$store.schoolFoundation.openTeacherEditDrawer(item); $store.appDrawer.open('teacher')"
+                          >
+                            <AvIcon name="edit" size="sm" />
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__icon-button school-foundation__icon-button--danger"
+                            title="Delete teacher"
+                            aria-label="Delete teacher"
+                            @click.prevent="$store.schoolFoundation.openDeleteConfirm('teacher', item.id, item.fullName)"
+                          >
+                            <AvIcon name="trash" size="sm" />
+                          </button>
+                        </div>
+                      </div>
                       <span class="av-text-soft">
                         <span x-text="item.employeeNumber"></span>
                         ·
                         <span x-text="$store.schoolFoundation.getSubjectName(item.primarySubjectId)"></span>
                       </span>
-                      <div class="school-foundation__row-actions">
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openTeacherEditDrawer(item); $store.appDrawer.open('teacher')">Edit</AvButton>
-                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('teacher', item.id, item.fullName)">Delete</AvButton>
-                      </div>
                     </article>
                   </template>
                 </div>
@@ -699,11 +789,56 @@ const tabs = [
       padding: 0.75rem;
     }
 
+    .school-foundation__row-title {
+      align-items: start;
+      display: flex;
+      gap: 0.75rem;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .school-foundation__row-title strong {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
     .school-foundation__row-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 0.45rem;
-      margin-top: auto;
+      justify-content: flex-end;
+      margin-left: auto;
+    }
+
+    .school-foundation__icon-button {
+      align-items: center;
+      background: rgba(15, 23, 42, 0.48);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      color: rgba(226, 232, 240, 0.86);
+      display: inline-flex;
+      height: 2rem;
+      justify-content: center;
+      padding: 0;
+      transition:
+        background-color 150ms ease,
+        border-color 150ms ease,
+        color 150ms ease;
+      width: 2rem;
+    }
+
+    .school-foundation__icon-button:hover,
+    .school-foundation__icon-button:focus-visible {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.35);
+      color: rgba(240, 253, 244, 0.98);
+    }
+
+    .school-foundation__icon-button--danger:hover,
+    .school-foundation__icon-button--danger:focus-visible {
+      background: rgba(248, 113, 113, 0.12);
+      border-color: rgba(248, 113, 113, 0.35);
+      color: rgb(254, 202, 202);
     }
 
     @media (min-width: 900px) {
