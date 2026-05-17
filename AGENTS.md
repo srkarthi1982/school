@@ -70,6 +70,8 @@ Do not add full school modules without approval:
 
 ## 4. Task Log (Recent)
 
+- 2026-05-17 Added `x-cloak` to School Foundation tab panels so hard refresh no longer flashes all tab contents before Alpine initializes. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
+
 - 2026-05-17 Fixed remaining foundation edit select prefill bindings: Section edit class select and Teacher edit primary-subject select now use string option values and re-apply form ids after Alpine mounts options, matching the working Student edit select pattern. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
 
 - 2026-05-17 Corrected student edit class/section select prefill at the drawer binding layer: class and section options now use string values and the selects re-apply form ids after Alpine mounts filtered options, preserving unchanged class/section saves. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
