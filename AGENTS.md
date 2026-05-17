@@ -27,14 +27,31 @@ This repo contains the School Ansiversa mini-app.
 
 ## 2. Current Scope
 
-School is currently a clean foundation only.
+School currently includes DB Foundation V1 only.
 
-Do not add school modules without approval:
+Allowed V1 foundation records:
 
+- School organization owned by the logged-in Ansiversa user
+- Academic years schema
+- Classes
+- Sections
+- Subjects
 - Students
 - Teachers
+
+Do not add full school modules without approval:
+
 - Attendance
 - Fees
+- Exams
+- Report cards
+- Transport
+- Library
+- Hostel
+- Communication
+- Student login
+- Teacher login
+- Parent portal
 - School-specific database tables
 - Fake/demo school data
 - Stripe or billing changes
@@ -45,11 +62,15 @@ Do not add school modules without approval:
 
 - Remote DB URL: `libsql://school-ansiversa.aws-ap-south-1.turso.io`.
 - Secrets must stay in local/uncommitted env files or deployment environment variables.
-- `db/config.ts` currently defines no app tables.
+- `db/config.ts` defines School DB Foundation V1 tables only.
+- Every school-owned table is scoped by `schoolId`.
+- Owner-level access must resolve `SchoolOrganizations.ownerUserId` first.
 
 ---
 
 ## 4. Task Log (Recent)
+
+- 2026-05-17 Added School DB Foundation V1: created owner-scoped school organization, academic year, class, section, subject, student, and teacher tables; added safe Astro actions for create/list foundation records; replaced `/app` placeholder with a minimal owner workspace for setup and master records; documented scope/exclusions in `docs/app-spec.md`. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints), `npm run build` passed, and `npm run db:push` applied the remote School Turso schema.
 
 - 2026-05-17 Initialized School Ansiversa from the current `app-starter` baseline: copied the baseline into the empty `school` repo, updated app/package/UI identity to School, configured local `.env` for the School Turso DB without committing secrets, preserved the standard parent-auth `/` + `/app` architecture, and kept the foundation free of school modules/tables/demo data. Verification: `npm install` completed (27 npm audit findings reported), `npm run typecheck` passed (0 errors, 5 existing redirect-page hints), and `npm run build` passed.
 

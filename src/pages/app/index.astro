@@ -1,49 +1,399 @@
 ---
-import { AvButton, AvCard, AvContainer } from "@ansiversa/components";
+import { actions } from "astro:actions";
+import { AvButton, AvCard, AvContainer, AvInput, AvSelect } from "@ansiversa/components";
 import AppShell from "../../layouts/AppShell.astro";
 import { APP_META } from "../../app.meta";
 
 const title = `${APP_META.name} App`;
 const description = "Protected School Ansiversa backend workspace.";
 
-const nextSteps = [
-  "Keep this as the clean School backend foundation until school modules are approved.",
-  "Route signed-in School users through /app while preserving parent Ansiversa authentication.",
-  "Add academics, attendance, fees, and related school workflows only after the foundation is locked.",
+const emptyState = {
+  school: null,
+  classes: [],
+  sections: [],
+  subjects: [],
+  students: [],
+  teachers: [],
+};
+
+const workspaceResult = await Astro.callAction(actions.schoolFoundation.getFoundationWorkspace, {});
+const initialState = workspaceResult.error ? emptyState : (workspaceResult.data ?? emptyState);
+const initialStateJson = JSON.stringify(initialState).replace(/</g, "\\u003c");
+
+const tabs = [
+  { key: "classes", label: "Classes" },
+  { key: "sections", label: "Sections" },
+  { key: "subjects", label: "Subjects" },
+  { key: "students", label: "Students" },
+  { key: "teachers", label: "Teachers" },
 ];
 ---
 
 <AppShell title={title} description={description}>
-  <section class="av-section">
+  <script is:inline set:html={`window.__SCHOOL_FOUNDATION_INITIAL__ = ${initialStateJson};`}></script>
+
+  <section
+    class="av-section school-foundation"
+    x-data
+    x-init="$store.schoolFoundation.init(window.__SCHOOL_FOUNDATION_INITIAL__)"
+  >
     <AvContainer>
       <div class="av-auth-stack-lg">
+        <div class="school-foundation__header">
+          <div class="av-auth-stack-xs">
+            <p class="av-kicker">School Ansiversa</p>
+            <h1 class="av-section-title">School backend foundation</h1>
+            <p class="av-text-soft">
+              Create the school organization first, then add the basic academic master records.
+              Students and teachers here are internal school records only.
+            </p>
+          </div>
+          <div class="av-row-wrap">
+            <AvButton href="/">Back to landing</AvButton>
+            <AvButton href="/signout" variant="ghost">Sign out</AvButton>
+          </div>
+        </div>
+
+        <template x-if="$store.schoolFoundation.error">
+          <div class="school-foundation__notice school-foundation__notice--error" x-text="$store.schoolFoundation.error"></div>
+        </template>
+        <template x-if="$store.schoolFoundation.success">
+          <div class="school-foundation__notice school-foundation__notice--success" x-text="$store.schoolFoundation.success"></div>
+        </template>
+
         <AvCard className="av-auth-card">
-          <div class="av-auth-stack-md">
+          <div class="school-foundation__card-grid">
             <div class="av-auth-stack-xs">
-              <p class="av-kicker">School Ansiversa</p>
-              <h1 class="av-section-title">School backend</h1>
+              <p class="av-kicker">Setup</p>
+              <h2 class="av-card-heading">School organization</h2>
               <p class="av-text-soft">
-                This is the protected foundation for School Ansiversa. Authenticated users land here
-                after parent sign-in before future school management workflows are added.
+                This record belongs to the logged-in Ansiversa owner. Other foundation data is
+                scoped to this school.
               </p>
+              <template x-if="$store.schoolFoundation.school">
+                <p class="av-text-soft">
+                  Current school:
+                  <strong x-text="$store.schoolFoundation.school?.name"></strong>
+                </p>
+              </template>
             </div>
 
-            <div class="av-row-wrap">
-              <AvButton href="/">Back to landing</AvButton>
-              <AvButton href="/signout" variant="ghost">Sign out</AvButton>
-            </div>
+            <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.saveSchool()">
+              <div class="school-foundation__form-grid">
+                <AvInput label="School name" name="school-name" x-model="$store.schoolFoundation.schoolForm.name" required />
+                <AvInput label="Slug" name="school-slug" x-model="$store.schoolFoundation.schoolForm.slug" hint="Optional. Generated from the name if blank." />
+                <AvInput label="Country" name="school-country" x-model="$store.schoolFoundation.schoolForm.country" required />
+                <AvInput label="Timezone" name="school-timezone" x-model="$store.schoolFoundation.schoolForm.timezone" required />
+                <AvInput label="Currency" name="school-currency" x-model="$store.schoolFoundation.schoolForm.currency" required />
+              </div>
+              <div class="av-row-wrap">
+                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Save school</AvButton>
+                <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.resetSchoolForm()">Reset</AvButton>
+              </div>
+            </form>
           </div>
         </AvCard>
 
-        <div class="grid gap-4 md:grid-cols-3">
-          {nextSteps.map((step) => (
-            <AvCard variant="soft" className="av-auth-stack-sm">
-              <h2 class="av-card-heading">Next step</h2>
-              <p class="av-text-soft">{step}</p>
-            </AvCard>
-          ))}
-        </div>
+        <AvCard variant="soft" className="school-foundation__workspace">
+          <div class="school-foundation__tabs" role="tablist" aria-label="School foundation sections">
+            {tabs.map((tab) => (
+              <button
+                type="button"
+                class="school-foundation__tab"
+                :class={`$store.schoolFoundation.activeTab === '${tab.key}' ? 'school-foundation__tab--active' : ''`}
+                @click={`$store.schoolFoundation.activeTab = '${tab.key}'`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <template x-if="!$store.schoolFoundation.hasSchool">
+            <div class="school-foundation__empty" x-text="$store.schoolFoundation.schoolRequiredMessage"></div>
+          </template>
+
+          <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'classes'">
+            <div class="school-foundation__split">
+              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createClass()">
+                <h2 class="av-card-heading">Add class</h2>
+                <AvInput label="Class name" name="class-name" x-model="$store.schoolFoundation.classForm.name" required />
+                <AvInput label="Sort order" name="class-sort" type="number" x-model.number="$store.schoolFoundation.classForm.sortOrder" />
+                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add class</AvButton>
+              </form>
+
+              <div class="school-foundation__list">
+                <template x-if="$store.schoolFoundation.classes.length === 0">
+                  <p class="av-text-soft">No classes yet.</p>
+                </template>
+                <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                  <article class="school-foundation__row">
+                    <strong x-text="item.name"></strong>
+                    <span class="av-text-soft">Order <span x-text="item.sortOrder"></span></span>
+                  </article>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'sections'">
+            <div class="school-foundation__split">
+              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createSection()">
+                <h2 class="av-card-heading">Add section</h2>
+                <label class="av-label" for="section-class">Class *</label>
+                <select id="section-class" class="av-input" x-model="$store.schoolFoundation.sectionForm.classId" required>
+                  <option value="">Select class</option>
+                  <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                    <option :value="item.id" x-text="item.name"></option>
+                  </template>
+                </select>
+                <AvInput label="Section name" name="section-name" x-model="$store.schoolFoundation.sectionForm.name" required />
+                <AvInput label="Sort order" name="section-sort" type="number" x-model.number="$store.schoolFoundation.sectionForm.sortOrder" />
+                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add section</AvButton>
+              </form>
+
+              <div class="school-foundation__list">
+                <template x-if="$store.schoolFoundation.sections.length === 0">
+                  <p class="av-text-soft">No sections yet.</p>
+                </template>
+                <template x-for="item in $store.schoolFoundation.sections" :key="item.id">
+                  <article class="school-foundation__row">
+                    <strong x-text="item.name"></strong>
+                    <span class="av-text-soft" x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
+                  </article>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'subjects'">
+            <div class="school-foundation__split">
+              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createSubject()">
+                <h2 class="av-card-heading">Add subject</h2>
+                <AvInput label="Subject name" name="subject-name" x-model="$store.schoolFoundation.subjectForm.name" required />
+                <AvInput label="Code" name="subject-code" x-model="$store.schoolFoundation.subjectForm.code" />
+                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add subject</AvButton>
+              </form>
+
+              <div class="school-foundation__list">
+                <template x-if="$store.schoolFoundation.subjects.length === 0">
+                  <p class="av-text-soft">No subjects yet.</p>
+                </template>
+                <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
+                  <article class="school-foundation__row">
+                    <strong x-text="item.name"></strong>
+                    <span class="av-text-soft" x-text="item.code || '-'"></span>
+                  </article>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'students'">
+            <div class="school-foundation__split">
+              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createStudent()">
+                <h2 class="av-card-heading">Add student</h2>
+                <div class="school-foundation__form-grid">
+                  <AvInput label="Admission number" name="student-admission" x-model="$store.schoolFoundation.studentForm.admissionNumber" required />
+                  <AvInput label="Roll number" name="student-roll" x-model="$store.schoolFoundation.studentForm.rollNumber" />
+                  <AvInput label="Full name" name="student-name" x-model="$store.schoolFoundation.studentForm.fullName" required />
+                  <AvInput label="Date of birth" name="student-dob" type="date" x-model="$store.schoolFoundation.studentForm.dateOfBirth" />
+                </div>
+                <div class="school-foundation__form-grid">
+                  <label class="av-field">
+                    <span class="av-field__label">Class *</span>
+                    <select class="av-input" x-model="$store.schoolFoundation.studentForm.classId" required>
+                      <option value="">Select class</option>
+                      <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                        <option :value="item.id" x-text="item.name"></option>
+                      </template>
+                    </select>
+                  </label>
+                  <label class="av-field">
+                    <span class="av-field__label">Section *</span>
+                    <select class="av-input" x-model="$store.schoolFoundation.studentForm.sectionId" required>
+                      <option value="">Select section</option>
+                      <template x-for="item in $store.schoolFoundation.sectionsForClass($store.schoolFoundation.studentForm.classId)" :key="item.id">
+                        <option :value="item.id" x-text="item.name"></option>
+                      </template>
+                    </select>
+                  </label>
+                  <AvSelect label="Gender" name="student-gender" x-model="$store.schoolFoundation.studentForm.gender">
+                    <option value="unspecified">Unspecified</option>
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                    <option value="other">Other</option>
+                  </AvSelect>
+                  <AvSelect label="Status" name="student-status" x-model="$store.schoolFoundation.studentForm.status">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </AvSelect>
+                </div>
+                <div class="school-foundation__form-grid">
+                  <AvInput label="Guardian name" name="guardian-name" x-model="$store.schoolFoundation.studentForm.guardianName" />
+                  <AvInput label="Guardian phone" name="guardian-phone" x-model="$store.schoolFoundation.studentForm.guardianPhone" />
+                </div>
+                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add student</AvButton>
+              </form>
+
+              <div class="school-foundation__list">
+                <template x-if="$store.schoolFoundation.students.length === 0">
+                  <p class="av-text-soft">No students yet.</p>
+                </template>
+                <template x-for="item in $store.schoolFoundation.students" :key="item.id">
+                  <article class="school-foundation__row">
+                    <strong x-text="item.fullName"></strong>
+                    <span class="av-text-soft">
+                      <span x-text="item.admissionNumber"></span>
+                      ·
+                      <span x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
+                      /
+                      <span x-text="$store.schoolFoundation.getSectionName(item.sectionId)"></span>
+                    </span>
+                  </article>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'teachers'">
+            <div class="school-foundation__split">
+              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createTeacher()">
+                <h2 class="av-card-heading">Add teacher</h2>
+                <div class="school-foundation__form-grid">
+                  <AvInput label="Employee number" name="teacher-employee" x-model="$store.schoolFoundation.teacherForm.employeeNumber" required />
+                  <AvInput label="Full name" name="teacher-name" x-model="$store.schoolFoundation.teacherForm.fullName" required />
+                  <AvInput label="Phone" name="teacher-phone" x-model="$store.schoolFoundation.teacherForm.phone" />
+                  <AvInput label="Email" name="teacher-email" type="email" x-model="$store.schoolFoundation.teacherForm.email" />
+                </div>
+                <div class="school-foundation__form-grid">
+                  <label class="av-field">
+                    <span class="av-field__label">Primary subject</span>
+                    <select class="av-input" x-model="$store.schoolFoundation.teacherForm.primarySubjectId">
+                      <option value="">Select subject</option>
+                      <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
+                        <option :value="item.id" x-text="item.name"></option>
+                      </template>
+                    </select>
+                  </label>
+                  <AvSelect label="Status" name="teacher-status" x-model="$store.schoolFoundation.teacherForm.status">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </AvSelect>
+                </div>
+                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add teacher</AvButton>
+              </form>
+
+              <div class="school-foundation__list">
+                <template x-if="$store.schoolFoundation.teachers.length === 0">
+                  <p class="av-text-soft">No teachers yet.</p>
+                </template>
+                <template x-for="item in $store.schoolFoundation.teachers" :key="item.id">
+                  <article class="school-foundation__row">
+                    <strong x-text="item.fullName"></strong>
+                    <span class="av-text-soft">
+                      <span x-text="item.employeeNumber"></span>
+                      ·
+                      <span x-text="$store.schoolFoundation.getSubjectName(item.primarySubjectId)"></span>
+                    </span>
+                  </article>
+                </template>
+              </div>
+            </div>
+          </div>
+        </AvCard>
       </div>
     </AvContainer>
   </section>
+
+  <style>
+    .school-foundation__header,
+    .school-foundation__card-grid,
+    .school-foundation__split {
+      display: grid;
+      gap: 1.25rem;
+    }
+
+    .school-foundation__header {
+      align-items: end;
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .school-foundation__card-grid,
+    .school-foundation__split {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .school-foundation__form-grid {
+      display: grid;
+      gap: 0.85rem;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .school-foundation__notice,
+    .school-foundation__empty {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+    }
+
+    .school-foundation__notice--error {
+      border-color: rgba(248, 113, 113, 0.35);
+      color: rgb(254, 202, 202);
+    }
+
+    .school-foundation__notice--success {
+      border-color: rgba(74, 222, 128, 0.35);
+      color: rgb(187, 247, 208);
+    }
+
+    .school-foundation__workspace {
+      padding: 1rem;
+    }
+
+    .school-foundation__tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .school-foundation__tab {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 8px;
+      color: rgba(226, 232, 240, 0.78);
+      padding: 0.5rem 0.75rem;
+    }
+
+    .school-foundation__tab--active {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.35);
+      color: rgba(240, 253, 244, 0.98);
+    }
+
+    .school-foundation__tab-panel {
+      margin-top: 0.75rem;
+    }
+
+    .school-foundation__list {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .school-foundation__row {
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      padding: 0.75rem;
+    }
+
+    @media (min-width: 900px) {
+      .school-foundation__header,
+      .school-foundation__card-grid,
+      .school-foundation__split {
+        grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+      }
+    }
+  </style>
 </AppShell>
