@@ -28,6 +28,7 @@ const tabs = [
   { key: "students", label: "Students" },
   { key: "teachers", label: "Teachers" },
   { key: "attendance", label: "Attendance" },
+  { key: "fees", label: "Fees" },
 ];
 ---
 
@@ -369,6 +370,119 @@ const tabs = [
               <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
               <AvButton type="submit" form="school-teacher-drawer-form" :disabled="$store.schoolFoundation.loading">
                 <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save teacher'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'feeCategory'">
+          <SettingsDrawer
+            title="Add fee category"
+            titleExpression="$store.schoolFoundation.feeFormMode === 'edit' ? 'Edit fee category' : 'Add fee category'"
+            description="Define reusable fee categories such as tuition, transport, books, or exam fees."
+          >
+            <form id="school-fee-category-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveFeeCategory()">
+              <AvInput label="Category name" name="fee-category-name" x-model="$store.schoolFoundation.feeCategoryForm.name" required />
+              <AvInput label="Code" name="fee-category-code" x-model="$store.schoolFoundation.feeCategoryForm.code" />
+              <label class="av-field">
+                <span class="av-field__label">Description</span>
+                <textarea class="av-input" rows="4" x-model="$store.schoolFoundation.feeCategoryForm.description"></textarea>
+              </label>
+              <label class="school-foundation__check-row">
+                <input type="checkbox" x-model="$store.schoolFoundation.feeCategoryForm.isActive" />
+                <span>Active</span>
+              </label>
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.feeDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.feeDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-fee-category-form" :disabled="$store.schoolFoundation.feeSaving">
+                <span x-text="$store.schoolFoundation.feeSaving ? 'Saving...' : 'Save category'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'feeStructure'">
+          <SettingsDrawer
+            title="Add fee structure"
+            titleExpression="$store.schoolFoundation.feeFormMode === 'edit' ? 'Edit fee structure' : 'Add fee structure'"
+            description="Create a class-wise fee plan. Academic year can remain blank for V1."
+          >
+            <form id="school-fee-structure-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveFeeStructure()">
+              <label class="av-field">
+                <span class="av-field__label">Class *</span>
+                <select
+                  class="av-input"
+                  x-model="$store.schoolFoundation.feeStructureForm.classId"
+                  x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.feeStructureForm.classId })"
+                  required
+                >
+                  <option value="">Select class</option>
+                  <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                    <option :value="String(item.id)" x-text="item.name"></option>
+                  </template>
+                </select>
+              </label>
+              <AvInput label="Structure name" name="fee-structure-name" x-model="$store.schoolFoundation.feeStructureForm.name" required />
+              <AvInput label="Academic year ID" name="fee-structure-year" x-model="$store.schoolFoundation.feeStructureForm.academicYearId" hint="Optional for V1." />
+              <label class="school-foundation__check-row">
+                <input type="checkbox" x-model="$store.schoolFoundation.feeStructureForm.isActive" />
+                <span>Active</span>
+              </label>
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.feeDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.feeDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-fee-structure-form" :disabled="$store.schoolFoundation.feeSaving">
+                <span x-text="$store.schoolFoundation.feeSaving ? 'Saving...' : 'Save structure'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'feeItem'">
+          <SettingsDrawer
+            title="Add fee item"
+            titleExpression="$store.schoolFoundation.feeFormMode === 'edit' ? 'Edit fee item' : 'Add fee item'"
+            description="Add category amount and due date rows to the selected fee structure."
+          >
+            <form id="school-fee-item-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveFeeItem()">
+              <label class="av-field">
+                <span class="av-field__label">Category *</span>
+                <select
+                  class="av-input"
+                  x-model="$store.schoolFoundation.feeItemForm.feeCategoryId"
+                  x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.feeItemForm.feeCategoryId })"
+                  required
+                >
+                  <option value="">Select category</option>
+                  <template x-for="item in $store.schoolFoundation.feeCategories" :key="item.id">
+                    <option :value="String(item.id)" x-text="item.name"></option>
+                  </template>
+                </select>
+              </label>
+              <AvInput label="Amount" name="fee-item-amount" type="number" x-model.number="$store.schoolFoundation.feeItemForm.amount" required />
+              <AvInput label="Due date" name="fee-item-due-date" type="date" x-model="$store.schoolFoundation.feeItemForm.dueDate" required />
+              <AvInput label="Sort order" name="fee-item-sort-order" type="number" x-model.number="$store.schoolFoundation.feeItemForm.sortOrder" />
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.feeDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.feeDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-fee-item-form" :disabled="$store.schoolFoundation.feeSaving">
+                <span x-text="$store.schoolFoundation.feeSaving ? 'Saving...' : 'Save item'"></span>
               </AvButton>
             </div>
           </SettingsDrawer>
@@ -857,6 +971,148 @@ const tabs = [
               </section>
             </div>
           </div>
+
+          <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'fees'" x-cloak>
+            <div class="school-foundation__stack">
+              <template x-if="$store.schoolFoundation.feeError">
+                <div class="school-foundation__notice school-foundation__notice--error" x-text="$store.schoolFoundation.feeError"></div>
+              </template>
+              <template x-if="$store.schoolFoundation.feeSuccess">
+                <div class="school-foundation__notice school-foundation__notice--success" x-text="$store.schoolFoundation.feeSuccess"></div>
+              </template>
+
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <div class="school-foundation__section-copy">
+                    <h2 class="av-card-heading">Fee Categories</h2>
+                    <p class="av-text-soft">Define reusable fee heads for tuition, transport, exam, books, uniform, hostel, and miscellaneous fees.</p>
+                  </div>
+                  <AvButton type="button" @click.prevent="$store.schoolFoundation.openFeeCategoryDrawer(); $store.appDrawer.open('feeCategory')">Add category</AvButton>
+                </div>
+              </section>
+
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__list">
+                  <template x-if="$store.schoolFoundation.feeCategories.length === 0">
+                    <p class="av-text-soft">No fee categories yet.</p>
+                  </template>
+                  <template x-for="item in $store.schoolFoundation.feeCategories" :key="item.id">
+                    <article class="school-foundation__row">
+                      <div class="school-foundation__row-title">
+                        <strong x-text="item.name"></strong>
+                        <div class="school-foundation__row-actions">
+                          <button type="button" class="school-foundation__icon-button" title="Edit category" aria-label="Edit category" @click.prevent="$store.schoolFoundation.openFeeCategoryEditDrawer(item); $store.appDrawer.open('feeCategory')">
+                            <AvIcon name="edit" size="sm" />
+                          </button>
+                          <button type="button" class="school-foundation__icon-button school-foundation__icon-button--danger" title="Delete category" aria-label="Delete category" @click.prevent="$store.schoolFoundation.openDeleteConfirm('feeCategory', item.id, item.name)">
+                            <AvIcon name="trash" size="sm" />
+                          </button>
+                        </div>
+                      </div>
+                      <span class="av-text-soft">
+                        <span x-text="item.code || '-'"></span>
+                        ·
+                        <span x-text="item.isActive ? 'Active' : 'Inactive'"></span>
+                      </span>
+                    </article>
+                  </template>
+                </div>
+              </section>
+
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <div class="school-foundation__section-copy">
+                    <h2 class="av-card-heading">Fee Structures</h2>
+                    <p class="av-text-soft">Create class-wise fee structures. Payment collection is intentionally not included in this phase.</p>
+                  </div>
+                  <AvButton type="button" @click.prevent="$store.schoolFoundation.openFeeStructureDrawer(); $store.appDrawer.open('feeStructure')">Add structure</AvButton>
+                </div>
+
+                <div class="school-foundation__attendance-filters school-foundation__fee-filter">
+                  <label class="av-field">
+                    <span class="av-field__label">Class</span>
+                    <select class="av-input" x-model="$store.schoolFoundation.selectedFeeClassId" x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.selectedFeeClassId })" @change="$store.schoolFoundation.setFeeClass($event.target.value)">
+                      <option value="">All classes</option>
+                      <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                        <option :value="String(item.id)" x-text="item.name"></option>
+                      </template>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__list">
+                  <template x-if="$store.schoolFoundation.feeStructures.length === 0">
+                    <p class="av-text-soft">No fee structures yet.</p>
+                  </template>
+                  <template x-for="item in $store.schoolFoundation.feeStructures" :key="item.id">
+                    <article class="school-foundation__row" :class="$store.schoolFoundation.selectedFeeStructureId === item.id ? 'school-foundation__row--selected' : ''">
+                      <div class="school-foundation__row-title">
+                        <button type="button" class="school-foundation__plain-title" @click.prevent="$store.schoolFoundation.selectFeeStructure(item.id)" x-text="item.name"></button>
+                        <div class="school-foundation__row-actions">
+                          <button type="button" class="school-foundation__icon-button" title="Edit structure" aria-label="Edit structure" @click.prevent="$store.schoolFoundation.openFeeStructureEditDrawer(item); $store.appDrawer.open('feeStructure')">
+                            <AvIcon name="edit" size="sm" />
+                          </button>
+                          <button type="button" class="school-foundation__icon-button school-foundation__icon-button--danger" title="Delete structure" aria-label="Delete structure" @click.prevent="$store.schoolFoundation.openDeleteConfirm('feeStructure', item.id, item.name)">
+                            <AvIcon name="trash" size="sm" />
+                          </button>
+                        </div>
+                      </div>
+                      <span class="av-text-soft">
+                        <span x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
+                        ·
+                        <span x-text="item.isActive ? 'Active' : 'Inactive'"></span>
+                      </span>
+                    </article>
+                  </template>
+                </div>
+              </section>
+
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <div class="school-foundation__section-copy">
+                    <h2 class="av-card-heading">Fee Structure Detail</h2>
+                    <p class="av-text-soft" x-text="$store.schoolFoundation.selectedFeeStructure ? $store.schoolFoundation.selectedFeeStructure.name : 'Select a fee structure to manage category amounts and due dates.'"></p>
+                  </div>
+                  <AvButton type="button" :disabled="!$store.schoolFoundation.selectedFeeStructureId" @click.prevent="$store.schoolFoundation.openFeeItemDrawer(); $store.appDrawer.open('feeItem')">Add fee item</AvButton>
+                </div>
+              </section>
+
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <template x-if="!$store.schoolFoundation.selectedFeeStructureId">
+                  <div class="school-foundation__empty">Select a fee structure to view fee items.</div>
+                </template>
+                <template x-if="$store.schoolFoundation.selectedFeeStructureId && $store.schoolFoundation.feeItems.length === 0">
+                  <p class="av-text-soft">No fee items yet.</p>
+                </template>
+                <template x-if="$store.schoolFoundation.feeItems.length > 0">
+                  <div class="school-foundation__list">
+                    <template x-for="item in $store.schoolFoundation.feeItems" :key="item.id">
+                      <article class="school-foundation__row">
+                        <div class="school-foundation__row-title">
+                          <strong x-text="$store.schoolFoundation.getFeeCategoryName(item.feeCategoryId)"></strong>
+                          <div class="school-foundation__row-actions">
+                            <button type="button" class="school-foundation__icon-button" title="Edit fee item" aria-label="Edit fee item" @click.prevent="$store.schoolFoundation.openFeeItemEditDrawer(item); $store.appDrawer.open('feeItem')">
+                              <AvIcon name="edit" size="sm" />
+                            </button>
+                            <button type="button" class="school-foundation__icon-button school-foundation__icon-button--danger" title="Delete fee item" aria-label="Delete fee item" @click.prevent="$store.schoolFoundation.openDeleteConfirm('feeItem', item.id, $store.schoolFoundation.getFeeCategoryName(item.feeCategoryId))">
+                              <AvIcon name="trash" size="sm" />
+                            </button>
+                          </div>
+                        </div>
+                        <span class="av-text-soft">
+                          AED <span x-text="Number(item.amount || 0).toFixed(2)"></span>
+                          · Due <span x-text="item.dueDate || '-'"></span>
+                          · Order <span x-text="item.sortOrder"></span>
+                        </span>
+                      </article>
+                    </template>
+                  </div>
+                </template>
+              </section>
+            </div>
+          </div>
         </AvCard>
 
         <div x-on:av-confirm.window="if ($event.detail?.id === 'school-foundation-delete-dialog') $store.schoolFoundation.confirmDelete()">
@@ -1011,6 +1267,11 @@ const tabs = [
       padding: 0.75rem;
     }
 
+    .school-foundation__row--selected {
+      border-color: rgba(34, 197, 94, 0.38);
+      background: rgba(34, 197, 94, 0.08);
+    }
+
     .school-foundation__row-title {
       align-items: start;
       display: flex;
@@ -1022,6 +1283,22 @@ const tabs = [
     .school-foundation__row-title strong {
       min-width: 0;
       overflow-wrap: anywhere;
+    }
+
+    .school-foundation__plain-title {
+      color: rgba(248, 250, 252, 0.96);
+      font: inherit;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+      text-align: left;
+    }
+
+    .school-foundation__check-row {
+      align-items: center;
+      color: rgba(226, 232, 240, 0.84);
+      display: inline-flex;
+      gap: 0.5rem;
+      font-size: 0.9rem;
     }
 
     .school-foundation__row-actions {
@@ -1100,6 +1377,10 @@ const tabs = [
     .school-foundation__attendance-filters {
       align-items: end;
       margin-top: 1rem;
+    }
+
+    .school-foundation__fee-filter {
+      max-width: 320px;
     }
 
     .school-foundation__attendance-grid {

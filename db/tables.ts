@@ -176,6 +176,72 @@ export const DailyAttendanceExceptions = defineTable({
   ],
 });
 
+export const FeeCategories = defineTable({
+  columns: {
+    id: column.text({ primaryKey: true }),
+    schoolId: column.text({ references: () => SchoolOrganizations.columns.id }),
+    name: column.text(),
+    code: column.text(),
+    description: column.text(),
+    isActive: column.boolean({ default: true }),
+    createdAt: column.date({ default: NOW }),
+    updatedAt: column.date({ default: NOW }),
+  },
+  indexes: [
+    {
+      name: "fee_categories_school_idx",
+      on: "schoolId",
+    },
+  ],
+});
+
+export const FeeStructures = defineTable({
+  columns: {
+    id: column.text({ primaryKey: true }),
+    schoolId: column.text({ references: () => SchoolOrganizations.columns.id }),
+    classId: column.text({ references: () => SchoolClasses.columns.id }),
+    academicYearId: column.text({ optional: true, references: () => AcademicYears.columns.id }),
+    name: column.text(),
+    isActive: column.boolean({ default: true }),
+    createdAt: column.date({ default: NOW }),
+    updatedAt: column.date({ default: NOW }),
+  },
+  indexes: [
+    {
+      name: "fee_structures_school_idx",
+      on: "schoolId",
+    },
+    {
+      name: "fee_structures_class_idx",
+      on: "classId",
+    },
+  ],
+});
+
+export const FeeStructureItems = defineTable({
+  columns: {
+    id: column.text({ primaryKey: true }),
+    schoolId: column.text({ references: () => SchoolOrganizations.columns.id }),
+    feeStructureId: column.text({ references: () => FeeStructures.columns.id }),
+    feeCategoryId: column.text({ references: () => FeeCategories.columns.id }),
+    amount: column.number({ default: 0 }),
+    dueDate: column.text(),
+    sortOrder: column.number({ default: 0 }),
+    createdAt: column.date({ default: NOW }),
+    updatedAt: column.date({ default: NOW }),
+  },
+  indexes: [
+    {
+      name: "fee_structure_items_school_idx",
+      on: "schoolId",
+    },
+    {
+      name: "fee_structure_items_structure_idx",
+      on: "feeStructureId",
+    },
+  ],
+});
+
 export const schoolTables = {
   SchoolOrganizations,
   AcademicYears,
@@ -185,4 +251,7 @@ export const schoolTables = {
   Students,
   Teachers,
   DailyAttendanceExceptions,
+  FeeCategories,
+  FeeStructures,
+  FeeStructureItems,
 } as const;

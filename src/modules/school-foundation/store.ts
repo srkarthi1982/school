@@ -69,7 +69,7 @@ type TeacherDTO = {
 
 type StudentGender = "female" | "male" | "other" | "unspecified";
 type RecordStatus = "active" | "inactive";
-type FoundationRecordType = "class" | "section" | "subject" | "student" | "teacher";
+type FoundationRecordType = "class" | "section" | "subject" | "student" | "teacher" | "feeCategory" | "feeStructure" | "feeItem";
 type FoundationFormMode = "create" | "edit";
 type AttendanceStatus = "present" | "absent" | "late" | "excused";
 
@@ -127,6 +127,56 @@ type AttendanceSessionDTO = {
   exceptionCount: number;
 };
 
+type FeeCategoryDTO = {
+  id: string;
+  schoolId: string;
+  name: string;
+  code: string;
+  description: string;
+  isActive: boolean;
+};
+
+type FeeStructureDTO = {
+  id: string;
+  schoolId: string;
+  classId: string;
+  academicYearId?: string | null;
+  name: string;
+  isActive: boolean;
+};
+
+type FeeStructureItemDTO = {
+  id: string;
+  schoolId: string;
+  feeStructureId: string;
+  feeCategoryId: string;
+  amount: number;
+  dueDate: string;
+  sortOrder: number;
+};
+
+type FeeCategoryForm = {
+  name: string;
+  code: string;
+  description: string;
+  isActive: boolean;
+};
+
+type FeeStructureForm = {
+  classId: string;
+  academicYearId: string;
+  name: string;
+  isActive: boolean;
+};
+
+type FeeItemForm = {
+  feeStructureId: string;
+  feeCategoryId: string;
+  amount: number;
+  dueDate: string;
+  sortOrder: number;
+};
+
 const defaultSchoolForm = () => ({
   name: "",
   slug: "",
@@ -171,6 +221,28 @@ const defaultTeacherForm = (): TeacherForm => ({
   email: "",
   primarySubjectId: "",
   status: "active",
+});
+
+const defaultFeeCategoryForm = (): FeeCategoryForm => ({
+  name: "",
+  code: "",
+  description: "",
+  isActive: true,
+});
+
+const defaultFeeStructureForm = (): FeeStructureForm => ({
+  classId: "",
+  academicYearId: "",
+  name: "",
+  isActive: true,
+});
+
+const defaultFeeItemForm = (): FeeItemForm => ({
+  feeStructureId: "",
+  feeCategoryId: "",
+  amount: 0,
+  dueDate: todayKey(),
+  sortOrder: 0,
 });
 
 const toId = (value: unknown) => String(value ?? "");
@@ -237,6 +309,23 @@ export class SchoolFoundationStore extends AvBaseStore {
   attendanceSaving = false;
   attendanceError: string | null = null;
   attendanceSuccess: string | null = null;
+  feeCategories: FeeCategoryDTO[] = [];
+  feeStructures: FeeStructureDTO[] = [];
+  feeItems: FeeStructureItemDTO[] = [];
+  selectedFeeClassId = "";
+  selectedFeeStructureId = "";
+  feeLoading = false;
+  feeSaving = false;
+  feeError: string | null = null;
+  feeSuccess: string | null = null;
+  feeDrawerError: string | null = null;
+  feeFormMode: FoundationFormMode = "create";
+  editingFeeCategoryId: string | null = null;
+  editingFeeStructureId: string | null = null;
+  editingFeeItemId: string | null = null;
+  feeCategoryForm = defaultFeeCategoryForm();
+  feeStructureForm = defaultFeeStructureForm();
+  feeItemForm = defaultFeeItemForm();
 
   init(initial?: Partial<WorkspaceState>) {
     this.applyState({ ...emptyState(), ...(initial ?? {}) });
@@ -244,6 +333,7 @@ export class SchoolFoundationStore extends AvBaseStore {
     if (this.hasSchool) {
       void this.loadRecentAttendance();
       void this.loadAttendanceSummary();
+      void this.loadFees();
     }
   }
 
@@ -723,10 +813,26 @@ export class SchoolFoundationStore extends AvBaseStore {
         await actions.schoolFoundation.deleteTeacher({ id: pending.id });
         await this.refreshTeachers();
       }
+      if (pending.type === "feeCategory") {
+        await actions.schoolFees.deleteFeeCategory({ id: pending.id });
+        await this.loadFeeCategories();
+      }
+      if (pending.type === "feeStructure") {
+        await actions.schoolFees.deleteFeeStructure({ id: pending.id });
+        await this.loadFeeStructures();
+        this.feeItems = [];
+        this.selectedFeeStructureId = "";
+      }
+      if (pending.type === "feeItem") {
+        await actions.schoolFees.deleteFeeStructureItem({ id: pending.id });
+        await this.loadFeeItems();
+      }
       this.pendingDelete = null;
       this.success = `${pending.label} deleted.`;
+      this.feeSuccess = `${pending.label} deleted.`;
     } catch (err: any) {
       this.fail(err, `Unable to delete ${pending.label.toLowerCase()}.`);
+      this.feeError = err?.message || `Unable to delete ${pending.label.toLowerCase()}.`;
     } finally {
       this.finish();
     }
@@ -887,6 +993,210 @@ export class SchoolFoundationStore extends AvBaseStore {
       this.attendanceError = err?.message || "Unable to save attendance.";
     } finally {
       this.attendanceSaving = false;
+    }
+  }
+
+  async loadFees() {
+    await Promise.all([this.loadFeeCategories(), this.loadFeeStructures()]);
+  }
+
+  async loadFeeCategories() {
+    if (!this.hasSchool) return;
+    try {
+      const result = await actions.schoolFees.listFeeCategories({});
+      const data = this.unwrap<{ items: FeeCategoryDTO[] }>(result);
+      this.feeCategories = data.items ?? [];
+    } catch (err: any) {
+      this.feeError = err?.message || "Unable to load fee categories.";
+    }
+  }
+
+  async loadFeeStructures() {
+    if (!this.hasSchool) return;
+    try {
+      const result = await actions.schoolFees.listFeeStructures({ classId: this.selectedFeeClassId || undefined });
+      const data = this.unwrap<{ items: FeeStructureDTO[] }>(result);
+      this.feeStructures = data.items ?? [];
+      if (this.selectedFeeStructureId && !this.feeStructures.some((item) => item.id === this.selectedFeeStructureId)) {
+        this.selectedFeeStructureId = "";
+        this.feeItems = [];
+      }
+    } catch (err: any) {
+      this.feeError = err?.message || "Unable to load fee structures.";
+    }
+  }
+
+  async loadFeeItems() {
+    if (!this.selectedFeeStructureId) {
+      this.feeItems = [];
+      return;
+    }
+    try {
+      const result = await actions.schoolFees.listFeeStructureItems({ feeStructureId: this.selectedFeeStructureId });
+      const data = this.unwrap<{ items: FeeStructureItemDTO[] }>(result);
+      this.feeItems = data.items ?? [];
+    } catch (err: any) {
+      this.feeError = err?.message || "Unable to load fee items.";
+    }
+  }
+
+  setFeeClass(classId: string) {
+    this.selectedFeeClassId = toId(classId);
+    this.selectedFeeStructureId = "";
+    this.feeItems = [];
+    void this.loadFeeStructures();
+  }
+
+  selectFeeStructure(id: string) {
+    this.selectedFeeStructureId = toId(id);
+    void this.loadFeeItems();
+  }
+
+  get selectedFeeStructure() {
+    return this.feeStructures.find((item) => item.id === this.selectedFeeStructureId) ?? null;
+  }
+
+  getFeeCategoryName(id: string) {
+    return this.feeCategories.find((item) => item.id === id)?.name || "-";
+  }
+
+  openFeeCategoryDrawer() {
+    this.feeFormMode = "create";
+    this.editingFeeCategoryId = null;
+    this.feeDrawerError = null;
+    this.feeCategoryForm = defaultFeeCategoryForm();
+  }
+
+  openFeeCategoryEditDrawer(item: FeeCategoryDTO) {
+    this.openFeeCategoryDrawer();
+    this.feeFormMode = "edit";
+    this.editingFeeCategoryId = item.id;
+    this.feeCategoryForm = {
+      name: item.name ?? "",
+      code: item.code ?? "",
+      description: item.description ?? "",
+      isActive: Boolean(item.isActive),
+    };
+  }
+
+  openFeeStructureDrawer() {
+    this.feeFormMode = "create";
+    this.editingFeeStructureId = null;
+    this.feeDrawerError = null;
+    this.feeStructureForm = {
+      ...defaultFeeStructureForm(),
+      classId: this.selectedFeeClassId,
+    };
+  }
+
+  openFeeStructureEditDrawer(item: FeeStructureDTO) {
+    this.openFeeStructureDrawer();
+    this.feeFormMode = "edit";
+    this.editingFeeStructureId = item.id;
+    this.feeStructureForm = {
+      classId: item.classId ?? "",
+      academicYearId: item.academicYearId ?? "",
+      name: item.name ?? "",
+      isActive: Boolean(item.isActive),
+    };
+  }
+
+  openFeeItemDrawer() {
+    this.feeFormMode = "create";
+    this.editingFeeItemId = null;
+    this.feeDrawerError = null;
+    this.feeItemForm = {
+      ...defaultFeeItemForm(),
+      feeStructureId: this.selectedFeeStructureId,
+    };
+  }
+
+  openFeeItemEditDrawer(item: FeeStructureItemDTO) {
+    this.openFeeItemDrawer();
+    this.feeFormMode = "edit";
+    this.editingFeeItemId = item.id;
+    this.feeItemForm = {
+      feeStructureId: item.feeStructureId ?? "",
+      feeCategoryId: item.feeCategoryId ?? "",
+      amount: Number(item.amount ?? 0),
+      dueDate: item.dueDate ?? todayKey(),
+      sortOrder: Number(item.sortOrder ?? 0),
+    };
+  }
+
+  async saveFeeCategory() {
+    if (this.feeSaving) return;
+    if (!this.feeCategoryForm.name.trim()) {
+      this.feeDrawerError = "Category name is required.";
+      return;
+    }
+    this.feeSaving = true;
+    this.feeDrawerError = null;
+    try {
+      if (this.feeFormMode === "edit") {
+        if (!this.editingFeeCategoryId) throw new Error("Select a category to edit.");
+        await actions.schoolFees.updateFeeCategory({ id: this.editingFeeCategoryId, ...this.feeCategoryForm });
+      } else {
+        await actions.schoolFees.createFeeCategory({ ...this.feeCategoryForm });
+      }
+      await this.loadFeeCategories();
+      this.feeSuccess = this.feeFormMode === "edit" ? "Fee category updated." : "Fee category added.";
+      this.closeDrawer();
+    } catch (err: any) {
+      this.feeDrawerError = err?.message || "Unable to save fee category.";
+    } finally {
+      this.feeSaving = false;
+    }
+  }
+
+  async saveFeeStructure() {
+    if (this.feeSaving) return;
+    if (!this.feeStructureForm.classId || !this.feeStructureForm.name.trim()) {
+      this.feeDrawerError = "Class and structure name are required.";
+      return;
+    }
+    this.feeSaving = true;
+    this.feeDrawerError = null;
+    try {
+      if (this.feeFormMode === "edit") {
+        if (!this.editingFeeStructureId) throw new Error("Select a fee structure to edit.");
+        await actions.schoolFees.updateFeeStructure({ id: this.editingFeeStructureId, ...this.feeStructureForm });
+      } else {
+        await actions.schoolFees.createFeeStructure({ ...this.feeStructureForm });
+      }
+      this.selectedFeeClassId = this.feeStructureForm.classId;
+      await this.loadFeeStructures();
+      this.feeSuccess = this.feeFormMode === "edit" ? "Fee structure updated." : "Fee structure added.";
+      this.closeDrawer();
+    } catch (err: any) {
+      this.feeDrawerError = err?.message || "Unable to save fee structure.";
+    } finally {
+      this.feeSaving = false;
+    }
+  }
+
+  async saveFeeItem() {
+    if (this.feeSaving) return;
+    if (!this.feeItemForm.feeStructureId || !this.feeItemForm.feeCategoryId || !this.feeItemForm.dueDate) {
+      this.feeDrawerError = "Structure, category, and due date are required.";
+      return;
+    }
+    this.feeSaving = true;
+    this.feeDrawerError = null;
+    try {
+      if (this.feeFormMode === "edit") {
+        if (!this.editingFeeItemId) throw new Error("Select a fee item to edit.");
+        await actions.schoolFees.updateFeeStructureItem({ id: this.editingFeeItemId, ...this.feeItemForm });
+      } else {
+        await actions.schoolFees.createFeeStructureItem({ ...this.feeItemForm });
+      }
+      await this.loadFeeItems();
+      this.feeSuccess = this.feeFormMode === "edit" ? "Fee item updated." : "Fee item added.";
+      this.closeDrawer();
+    } catch (err: any) {
+      this.feeDrawerError = err?.message || "Unable to save fee item.";
+    } finally {
+      this.feeSaving = false;
     }
   }
 }

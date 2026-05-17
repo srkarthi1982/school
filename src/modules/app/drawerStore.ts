@@ -1,7 +1,17 @@
 import type { Alpine } from "alpinejs";
 import { AvBaseStore } from "@ansiversa/components/alpine";
 
-export type DrawerKey = "create" | "settings" | "class" | "section" | "subject" | "student" | "teacher";
+export type DrawerKey =
+  | "create"
+  | "settings"
+  | "class"
+  | "section"
+  | "subject"
+  | "student"
+  | "teacher"
+  | "feeCategory"
+  | "feeStructure"
+  | "feeItem";
 export type DrawerActionKey = "create" | "save" | "saveAndNext";
 
 type DrawerErrors = Record<DrawerKey, string | null>;
@@ -15,6 +25,9 @@ const defaultErrors = (): DrawerErrors => ({
   subject: null,
   student: null,
   teacher: null,
+  feeCategory: null,
+  feeStructure: null,
+  feeItem: null,
 });
 
 const defaultLoading = (): DrawerLoading => ({

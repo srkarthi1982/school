@@ -1,6 +1,6 @@
 # School Ansiversa App Spec
 
-## School DB Foundation V1 + Daily Attendance V1
+## School DB Foundation V1 + Daily Attendance V1 + Fee Structure V1
 
 School Ansiversa is a mini-app backend owned by the Ansiversa ecosystem.
 
@@ -16,6 +16,9 @@ The parent Ansiversa app owns authentication, global users, billing, and session
 - `Students`
 - `Teachers`
 - `DailyAttendanceExceptions`
+- `FeeCategories`
+- `FeeStructures`
+- `FeeStructureItems`
 
 Every school-owned table is scoped by `schoolId`. Owner-level access must first resolve the current user's `SchoolOrganizations` row through `ownerUserId`, then use that owned `schoolId` for all reads and writes.
 
@@ -32,6 +35,10 @@ Every school-owned table is scoped by `schoolId`. Owner-level access must first 
 - Save daily attendance exceptions for class, section, and date.
 - List recent daily attendance sessions grouped by date/class/section.
 - Get daily attendance summary for a selected date.
+- Create/list/edit/delete fee categories.
+- Create/list/edit/delete class-wise fee structures.
+- Create/list/edit/delete fee structure items.
+- Get fee structure detail with category amount and due date rows.
 
 Students and teachers are internal school records in V1. They are not Ansiversa global users and do not receive login access.
 
@@ -50,6 +57,18 @@ Attendance is scoped by owned school, class, section, student, and date. Student
 
 Daily Attendance V1 does not include class/period attendance, timetables, teacher login, student login, parent portal, or other school modules.
 
+## Fee Structure V1
+
+Fee Structure V1 manages fee planning only. It does not collect payments.
+
+- Fee categories define reusable fee heads such as tuition, transport, exam, books, uniform, hostel, and miscellaneous.
+- Fee structures are class-wise plans with optional academic year linkage for future use.
+- Fee structure items define category amount, due date, and sort order.
+- All fee records are owned by the current user's school through `schoolId`.
+- Class and category references must belong to the same owned school.
+
+Fee Structure V1 does not include payments, receipts, payment gateways, parent portal, discounts/concessions, late fee calculations, or accounting/ledger workflows.
+
 ## V1 UI
 
 The protected `/app` workspace provides a minimal foundation interface with stacked tab sections: a header/action card followed by a separate list/empty-state card.
@@ -61,6 +80,7 @@ The protected `/app` workspace provides a minimal foundation interface with stac
 - Students section with drawer-based create/edit flow and confirmed delete.
 - Teachers section with drawer-based create/edit flow and confirmed delete.
 - Attendance section with stacked filter/action card, direct virtual classroom marking grid, and compact recent attendance sessions.
+- Fees section with stacked fee categories, class-wise fee structures, and fee structure detail/items. Fee create/edit flows use drawers and delete uses confirmation.
 
 Foundation update and delete actions must resolve the current owner's school before writing, and related references must remain school-scoped.
 
@@ -72,7 +92,12 @@ Do not add these in V1:
 
 - Class/period attendance.
 - Timetable.
-- Fees tables or workflows.
+- Fee payments.
+- Fee receipts.
+- Payment gateways.
+- Discounts or concessions.
+- Late fee calculations.
+- Accounting or ledger workflows.
 - Exams.
 - Report cards.
 - Transport.

@@ -29,6 +29,21 @@ import {
   listRecentDailyAttendanceSessions,
   saveDailyAttendance,
 } from "./schoolAttendance";
+import {
+  createFeeCategory,
+  createFeeStructure,
+  createFeeStructureItem,
+  deleteFeeCategory,
+  deleteFeeStructure,
+  deleteFeeStructureItem,
+  getFeeStructureDetail,
+  listFeeCategories,
+  listFeeStructureItems,
+  listFeeStructures,
+  updateFeeCategory,
+  updateFeeStructure,
+  updateFeeStructureItem,
+} from "./schoolFees";
 
 export const schoolFoundation = {
   getSchoolOrganization,
@@ -63,7 +78,24 @@ export const schoolAttendance = {
   getDailyAttendanceSummary,
 };
 
+export const schoolFees = {
+  listFeeCategories,
+  createFeeCategory,
+  updateFeeCategory,
+  deleteFeeCategory,
+  listFeeStructures,
+  createFeeStructure,
+  updateFeeStructure,
+  deleteFeeStructure,
+  listFeeStructureItems,
+  createFeeStructureItem,
+  updateFeeStructureItem,
+  deleteFeeStructureItem,
+  getFeeStructureDetail,
+};
+
 export const server = {
   schoolFoundation,
   schoolAttendance,
+  schoolFees,
 };
