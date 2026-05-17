@@ -2,6 +2,15 @@ import type { Alpine } from "alpinejs";
 import { AvBaseStore } from "@ansiversa/components/alpine";
 import { actions } from "astro:actions";
 
+declare global {
+  interface Window {
+    AvDialog?: {
+      open?: (id: string) => void;
+      close?: (id: string) => void;
+    };
+  }
+}
+
 type SchoolOrganizationDTO = {
   id: string;
   ownerUserId: string;
@@ -60,6 +69,8 @@ type TeacherDTO = {
 
 type StudentGender = "female" | "male" | "other" | "unspecified";
 type RecordStatus = "active" | "inactive";
+type FoundationRecordType = "class" | "section" | "subject" | "student" | "teacher";
+type FoundationFormMode = "create" | "edit";
 
 type StudentForm = {
   classId: string;
@@ -160,6 +171,13 @@ export class SchoolFoundationStore extends AvBaseStore {
   success: string | null = null;
   schoolDrawerError: string | null = null;
   foundationDrawerError: string | null = null;
+  foundationFormMode: FoundationFormMode = "create";
+  editingClassId: string | null = null;
+  editingSectionId: string | null = null;
+  editingSubjectId: string | null = null;
+  editingStudentId: string | null = null;
+  editingTeacherId: string | null = null;
+  pendingDelete: { type: FoundationRecordType; id: string; label: string } | null = null;
   schoolForm = defaultSchoolForm();
   classForm = defaultClassForm();
   sectionForm = defaultSectionForm();
@@ -215,6 +233,20 @@ export class SchoolFoundationStore extends AvBaseStore {
     appDrawer?.close?.();
   }
 
+  private openConfirmDialog(dialogId: string) {
+    if (typeof window === "undefined") return;
+    window.AvDialog?.open?.(dialogId);
+  }
+
+  private resetFoundationEditState() {
+    this.foundationFormMode = "create";
+    this.editingClassId = null;
+    this.editingSectionId = null;
+    this.editingSubjectId = null;
+    this.editingStudentId = null;
+    this.editingTeacherId = null;
+  }
+
   private requireSchoolForDrawer() {
     if (!this.hasSchool) {
       this.foundationDrawerError = this.schoolRequiredMessage;
@@ -245,35 +277,118 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.error = null;
     this.success = null;
     this.foundationDrawerError = null;
+    this.resetFoundationEditState();
     this.classForm = defaultClassForm();
+  }
+
+  openClassEditDrawer(item: ClassDTO) {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.resetFoundationEditState();
+    this.foundationFormMode = "edit";
+    this.editingClassId = item.id;
+    this.classForm = {
+      name: item.name ?? "",
+      sortOrder: item.sortOrder ?? 0,
+    };
   }
 
   openSectionDrawer() {
     this.error = null;
     this.success = null;
     this.foundationDrawerError = null;
+    this.resetFoundationEditState();
     this.sectionForm = defaultSectionForm();
+  }
+
+  openSectionEditDrawer(item: SectionDTO) {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.resetFoundationEditState();
+    this.foundationFormMode = "edit";
+    this.editingSectionId = item.id;
+    this.sectionForm = {
+      classId: item.classId ?? "",
+      name: item.name ?? "",
+      sortOrder: item.sortOrder ?? 0,
+    };
   }
 
   openSubjectDrawer() {
     this.error = null;
     this.success = null;
     this.foundationDrawerError = null;
+    this.resetFoundationEditState();
     this.subjectForm = defaultSubjectForm();
+  }
+
+  openSubjectEditDrawer(item: SubjectDTO) {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.resetFoundationEditState();
+    this.foundationFormMode = "edit";
+    this.editingSubjectId = item.id;
+    this.subjectForm = {
+      name: item.name ?? "",
+      code: item.code ?? "",
+    };
   }
 
   openStudentDrawer() {
     this.error = null;
     this.success = null;
     this.foundationDrawerError = null;
+    this.resetFoundationEditState();
     this.studentForm = defaultStudentForm();
+  }
+
+  openStudentEditDrawer(item: StudentDTO) {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.resetFoundationEditState();
+    this.foundationFormMode = "edit";
+    this.editingStudentId = item.id;
+    this.studentForm = {
+      classId: item.classId ?? "",
+      sectionId: item.sectionId ?? "",
+      admissionNumber: item.admissionNumber ?? "",
+      rollNumber: item.rollNumber ?? "",
+      fullName: item.fullName ?? "",
+      gender: (item.gender as StudentGender) || "unspecified",
+      dateOfBirth: item.dateOfBirth ?? "",
+      guardianName: item.guardianName ?? "",
+      guardianPhone: item.guardianPhone ?? "",
+      status: (item.status as RecordStatus) || "active",
+    };
   }
 
   openTeacherDrawer() {
     this.error = null;
     this.success = null;
     this.foundationDrawerError = null;
+    this.resetFoundationEditState();
     this.teacherForm = defaultTeacherForm();
+  }
+
+  openTeacherEditDrawer(item: TeacherDTO) {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.resetFoundationEditState();
+    this.foundationFormMode = "edit";
+    this.editingTeacherId = item.id;
+    this.teacherForm = {
+      employeeNumber: item.employeeNumber ?? "",
+      fullName: item.fullName ?? "",
+      phone: item.phone ?? "",
+      email: item.email ?? "",
+      primarySubjectId: item.primarySubjectId ?? "",
+      status: (item.status as RecordStatus) || "active",
+    };
   }
 
   private async refreshClasses() {
@@ -349,7 +464,14 @@ export class SchoolFoundationStore extends AvBaseStore {
     }
   }
 
-  async createClass() {
+  setStudentClass(classId: string) {
+    this.studentForm.classId = classId;
+    if (!this.sectionsForClass(classId).some((section) => section.id === this.studentForm.sectionId)) {
+      this.studentForm.sectionId = "";
+    }
+  }
+
+  async saveClass() {
     if (this.loading) return;
     if (!this.requireSchoolForDrawer()) return;
     if (!this.classForm.name.trim()) {
@@ -360,19 +482,26 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.begin();
     this.foundationDrawerError = null;
     try {
-      await actions.schoolFoundation.createClass({ ...this.classForm });
+      if (this.foundationFormMode === "edit") {
+        if (!this.editingClassId) throw new Error("Select a class to edit.");
+        await actions.schoolFoundation.updateClass({ id: this.editingClassId, ...this.classForm });
+      } else {
+        await actions.schoolFoundation.createClass({ ...this.classForm });
+      }
       await this.refreshClasses();
       this.classForm = defaultClassForm();
-      this.success = "Class added.";
+      const wasEdit = this.foundationFormMode === "edit";
+      this.resetFoundationEditState();
+      this.success = wasEdit ? "Class updated." : "Class added.";
       this.closeDrawer();
     } catch (err: any) {
-      this.foundationDrawerError = err?.message || "Unable to add class.";
+      this.foundationDrawerError = err?.message || "Unable to save class.";
     } finally {
       this.finish();
     }
   }
 
-  async createSection() {
+  async saveSection() {
     if (this.loading) return;
     if (!this.requireSchoolForDrawer()) return;
     if (!this.sectionForm.classId || !this.sectionForm.name.trim()) {
@@ -383,19 +512,26 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.begin();
     this.foundationDrawerError = null;
     try {
-      await actions.schoolFoundation.createSection({ ...this.sectionForm });
+      if (this.foundationFormMode === "edit") {
+        if (!this.editingSectionId) throw new Error("Select a section to edit.");
+        await actions.schoolFoundation.updateSection({ id: this.editingSectionId, ...this.sectionForm });
+      } else {
+        await actions.schoolFoundation.createSection({ ...this.sectionForm });
+      }
       await this.refreshSections();
       this.sectionForm = defaultSectionForm();
-      this.success = "Section added.";
+      const wasEdit = this.foundationFormMode === "edit";
+      this.resetFoundationEditState();
+      this.success = wasEdit ? "Section updated." : "Section added.";
       this.closeDrawer();
     } catch (err: any) {
-      this.foundationDrawerError = err?.message || "Unable to add section.";
+      this.foundationDrawerError = err?.message || "Unable to save section.";
     } finally {
       this.finish();
     }
   }
 
-  async createSubject() {
+  async saveSubject() {
     if (this.loading) return;
     if (!this.requireSchoolForDrawer()) return;
     if (!this.subjectForm.name.trim()) {
@@ -406,19 +542,26 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.begin();
     this.foundationDrawerError = null;
     try {
-      await actions.schoolFoundation.createSubject({ ...this.subjectForm });
+      if (this.foundationFormMode === "edit") {
+        if (!this.editingSubjectId) throw new Error("Select a subject to edit.");
+        await actions.schoolFoundation.updateSubject({ id: this.editingSubjectId, ...this.subjectForm });
+      } else {
+        await actions.schoolFoundation.createSubject({ ...this.subjectForm });
+      }
       await this.refreshSubjects();
       this.subjectForm = defaultSubjectForm();
-      this.success = "Subject added.";
+      const wasEdit = this.foundationFormMode === "edit";
+      this.resetFoundationEditState();
+      this.success = wasEdit ? "Subject updated." : "Subject added.";
       this.closeDrawer();
     } catch (err: any) {
-      this.foundationDrawerError = err?.message || "Unable to add subject.";
+      this.foundationDrawerError = err?.message || "Unable to save subject.";
     } finally {
       this.finish();
     }
   }
 
-  async createStudent() {
+  async saveStudent() {
     if (this.loading) return;
     if (!this.requireSchoolForDrawer()) return;
     if (!this.studentForm.classId || !this.studentForm.sectionId || !this.studentForm.admissionNumber.trim() || !this.studentForm.fullName.trim()) {
@@ -429,19 +572,26 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.begin();
     this.foundationDrawerError = null;
     try {
-      await actions.schoolFoundation.createStudent({ ...this.studentForm });
+      if (this.foundationFormMode === "edit") {
+        if (!this.editingStudentId) throw new Error("Select a student to edit.");
+        await actions.schoolFoundation.updateStudent({ id: this.editingStudentId, ...this.studentForm });
+      } else {
+        await actions.schoolFoundation.createStudent({ ...this.studentForm });
+      }
       await this.refreshStudents();
       this.studentForm = defaultStudentForm();
-      this.success = "Student added.";
+      const wasEdit = this.foundationFormMode === "edit";
+      this.resetFoundationEditState();
+      this.success = wasEdit ? "Student updated." : "Student added.";
       this.closeDrawer();
     } catch (err: any) {
-      this.foundationDrawerError = err?.message || "Unable to add student.";
+      this.foundationDrawerError = err?.message || "Unable to save student.";
     } finally {
       this.finish();
     }
   }
 
-  async createTeacher() {
+  async saveTeacher() {
     if (this.loading) return;
     if (!this.requireSchoolForDrawer()) return;
     if (!this.teacherForm.employeeNumber.trim() || !this.teacherForm.fullName.trim()) {
@@ -452,13 +602,65 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.begin();
     this.foundationDrawerError = null;
     try {
-      await actions.schoolFoundation.createTeacher({ ...this.teacherForm });
+      if (this.foundationFormMode === "edit") {
+        if (!this.editingTeacherId) throw new Error("Select a teacher to edit.");
+        await actions.schoolFoundation.updateTeacher({ id: this.editingTeacherId, ...this.teacherForm });
+      } else {
+        await actions.schoolFoundation.createTeacher({ ...this.teacherForm });
+      }
       await this.refreshTeachers();
       this.teacherForm = defaultTeacherForm();
-      this.success = "Teacher added.";
+      const wasEdit = this.foundationFormMode === "edit";
+      this.resetFoundationEditState();
+      this.success = wasEdit ? "Teacher updated." : "Teacher added.";
       this.closeDrawer();
     } catch (err: any) {
-      this.foundationDrawerError = err?.message || "Unable to add teacher.";
+      this.foundationDrawerError = err?.message || "Unable to save teacher.";
+    } finally {
+      this.finish();
+    }
+  }
+
+  openDeleteConfirm(type: FoundationRecordType, id: string, label: string) {
+    this.error = null;
+    this.success = null;
+    this.pendingDelete = { type, id, label };
+    this.openConfirmDialog("school-foundation-delete-dialog");
+  }
+
+  async confirmDelete() {
+    if (this.loading || !this.pendingDelete) return;
+    const pending = this.pendingDelete;
+    this.begin();
+    try {
+      if (pending.type === "class") {
+        await actions.schoolFoundation.deleteClass({ id: pending.id });
+        await this.refreshClasses();
+        await this.refreshSections();
+        await this.refreshStudents();
+      }
+      if (pending.type === "section") {
+        await actions.schoolFoundation.deleteSection({ id: pending.id });
+        await this.refreshSections();
+        await this.refreshStudents();
+      }
+      if (pending.type === "subject") {
+        await actions.schoolFoundation.deleteSubject({ id: pending.id });
+        await this.refreshSubjects();
+        await this.refreshTeachers();
+      }
+      if (pending.type === "student") {
+        await actions.schoolFoundation.deleteStudent({ id: pending.id });
+        await this.refreshStudents();
+      }
+      if (pending.type === "teacher") {
+        await actions.schoolFoundation.deleteTeacher({ id: pending.id });
+        await this.refreshTeachers();
+      }
+      this.pendingDelete = null;
+      this.success = `${pending.label} deleted.`;
+    } catch (err: any) {
+      this.fail(err, `Unable to delete ${pending.label.toLowerCase()}.`);
     } finally {
       this.finish();
     }

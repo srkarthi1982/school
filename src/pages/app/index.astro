@@ -1,6 +1,6 @@
 ---
 import { actions } from "astro:actions";
-import { AvButton, AvCard, AvContainer, AvInput, AvSelect } from "@ansiversa/components";
+import { AvButton, AvCard, AvConfirmDialog, AvContainer, AvInput, AvSelect } from "@ansiversa/components";
 import AppShell from "../../layouts/AppShell.astro";
 import SettingsDrawer from "../../components/drawers/SettingsDrawer.astro";
 import { APP_META } from "../../app.meta";
@@ -178,8 +178,12 @@ const tabs = [
         </template>
 
         <template x-if="$store.appDrawer.activeDrawer === 'class'">
-          <SettingsDrawer title="Add class" description="Create a class level for this school.">
-            <form id="school-class-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createClass()">
+          <SettingsDrawer
+            title="Add class"
+            titleExpression="$store.schoolFoundation.foundationFormMode === 'edit' ? 'Edit class' : 'Add class'"
+            description="Create or update a class level for this school."
+          >
+            <form id="school-class-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveClass()">
               <AvInput label="Class name" name="drawer-class-name" x-model="$store.schoolFoundation.classForm.name" required />
               <AvInput label="Sort order" name="drawer-class-sort" type="number" x-model.number="$store.schoolFoundation.classForm.sortOrder" />
             </form>
@@ -198,8 +202,12 @@ const tabs = [
         </template>
 
         <template x-if="$store.appDrawer.activeDrawer === 'section'">
-          <SettingsDrawer title="Add section" description="Create a section under an existing class.">
-            <form id="school-section-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createSection()">
+          <SettingsDrawer
+            title="Add section"
+            titleExpression="$store.schoolFoundation.foundationFormMode === 'edit' ? 'Edit section' : 'Add section'"
+            description="Create or update a section under an existing class."
+          >
+            <form id="school-section-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveSection()">
               <label class="av-field">
                 <span class="av-field__label">Class *</span>
                 <select class="av-input" x-model="$store.schoolFoundation.sectionForm.classId" required>
@@ -227,8 +235,12 @@ const tabs = [
         </template>
 
         <template x-if="$store.appDrawer.activeDrawer === 'subject'">
-          <SettingsDrawer title="Add subject" description="Create a subject in the school catalog.">
-            <form id="school-subject-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createSubject()">
+          <SettingsDrawer
+            title="Add subject"
+            titleExpression="$store.schoolFoundation.foundationFormMode === 'edit' ? 'Edit subject' : 'Add subject'"
+            description="Create or update a subject in the school catalog."
+          >
+            <form id="school-subject-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveSubject()">
               <AvInput label="Subject name" name="drawer-subject-name" x-model="$store.schoolFoundation.subjectForm.name" required />
               <AvInput label="Code" name="drawer-subject-code" x-model="$store.schoolFoundation.subjectForm.code" />
             </form>
@@ -247,15 +259,24 @@ const tabs = [
         </template>
 
         <template x-if="$store.appDrawer.activeDrawer === 'student'">
-          <SettingsDrawer title="Add student" description="Create an internal student record for this school.">
-            <form id="school-student-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createStudent()">
+          <SettingsDrawer
+            title="Add student"
+            titleExpression="$store.schoolFoundation.foundationFormMode === 'edit' ? 'Edit student' : 'Add student'"
+            description="Create or update an internal student record for this school."
+          >
+            <form id="school-student-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveStudent()">
               <AvInput label="Admission number" name="drawer-student-admission" x-model="$store.schoolFoundation.studentForm.admissionNumber" required />
               <AvInput label="Roll number" name="drawer-student-roll" x-model="$store.schoolFoundation.studentForm.rollNumber" />
               <AvInput label="Full name" name="drawer-student-name" x-model="$store.schoolFoundation.studentForm.fullName" required />
               <AvInput label="Date of birth" name="drawer-student-dob" type="date" x-model="$store.schoolFoundation.studentForm.dateOfBirth" />
               <label class="av-field">
                 <span class="av-field__label">Class *</span>
-                <select class="av-input" x-model="$store.schoolFoundation.studentForm.classId" required>
+                <select
+                  class="av-input"
+                  x-model="$store.schoolFoundation.studentForm.classId"
+                  @change="$store.schoolFoundation.setStudentClass($event.target.value)"
+                  required
+                >
                   <option value="">Select class</option>
                   <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
                     <option :value="item.id" x-text="item.name"></option>
@@ -299,8 +320,12 @@ const tabs = [
         </template>
 
         <template x-if="$store.appDrawer.activeDrawer === 'teacher'">
-          <SettingsDrawer title="Add teacher" description="Create an internal teacher record for this school.">
-            <form id="school-teacher-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createTeacher()">
+          <SettingsDrawer
+            title="Add teacher"
+            titleExpression="$store.schoolFoundation.foundationFormMode === 'edit' ? 'Edit teacher' : 'Add teacher'"
+            description="Create or update an internal teacher record for this school."
+          >
+            <form id="school-teacher-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveTeacher()">
               <AvInput label="Employee number" name="drawer-teacher-employee" x-model="$store.schoolFoundation.teacherForm.employeeNumber" required />
               <AvInput label="Full name" name="drawer-teacher-name" x-model="$store.schoolFoundation.teacherForm.fullName" required />
               <AvInput label="Phone" name="drawer-teacher-phone" x-model="$store.schoolFoundation.teacherForm.phone" />
@@ -372,6 +397,10 @@ const tabs = [
                     <article class="school-foundation__row">
                       <strong x-text="item.name"></strong>
                       <span class="av-text-soft">Order <span x-text="item.sortOrder"></span></span>
+                      <div class="school-foundation__row-actions">
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openClassEditDrawer(item); $store.appDrawer.open('class')">Edit</AvButton>
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('class', item.id, item.name)">Delete</AvButton>
+                      </div>
                     </article>
                   </template>
                 </div>
@@ -400,6 +429,10 @@ const tabs = [
                     <article class="school-foundation__row">
                       <strong x-text="item.name"></strong>
                       <span class="av-text-soft" x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
+                      <div class="school-foundation__row-actions">
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openSectionEditDrawer(item); $store.appDrawer.open('section')">Edit</AvButton>
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('section', item.id, item.name)">Delete</AvButton>
+                      </div>
                     </article>
                   </template>
                 </div>
@@ -428,6 +461,10 @@ const tabs = [
                     <article class="school-foundation__row">
                       <strong x-text="item.name"></strong>
                       <span class="av-text-soft" x-text="item.code || '-'"></span>
+                      <div class="school-foundation__row-actions">
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openSubjectEditDrawer(item); $store.appDrawer.open('subject')">Edit</AvButton>
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('subject', item.id, item.name)">Delete</AvButton>
+                      </div>
                     </article>
                   </template>
                 </div>
@@ -462,6 +499,10 @@ const tabs = [
                         /
                         <span x-text="$store.schoolFoundation.getSectionName(item.sectionId)"></span>
                       </span>
+                      <div class="school-foundation__row-actions">
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openStudentEditDrawer(item); $store.appDrawer.open('student')">Edit</AvButton>
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('student', item.id, item.fullName)">Delete</AvButton>
+                      </div>
                     </article>
                   </template>
                 </div>
@@ -494,6 +535,10 @@ const tabs = [
                         ·
                         <span x-text="$store.schoolFoundation.getSubjectName(item.primarySubjectId)"></span>
                       </span>
+                      <div class="school-foundation__row-actions">
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openTeacherEditDrawer(item); $store.appDrawer.open('teacher')">Edit</AvButton>
+                        <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.openDeleteConfirm('teacher', item.id, item.fullName)">Delete</AvButton>
+                      </div>
                     </article>
                   </template>
                 </div>
@@ -501,6 +546,17 @@ const tabs = [
             </div>
           </div>
         </AvCard>
+
+        <div x-on:av-confirm.window="if ($event.detail?.id === 'school-foundation-delete-dialog') $store.schoolFoundation.confirmDelete()">
+          <AvConfirmDialog
+            id="school-foundation-delete-dialog"
+            headline="Delete foundation record?"
+            description="Confirm before deleting this owner-scoped school record. This action cannot be undone."
+            confirmLabel="Delete"
+            cancelLabel="Cancel"
+            variant="danger"
+          />
+        </div>
       </div>
     </AvContainer>
   </section>
@@ -639,8 +695,15 @@ const tabs = [
       border-radius: 8px;
       display: flex;
       flex-direction: column;
-      gap: 0.2rem;
+      gap: 0.55rem;
       padding: 0.75rem;
+    }
+
+    .school-foundation__row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-top: auto;
     }
 
     @media (min-width: 900px) {

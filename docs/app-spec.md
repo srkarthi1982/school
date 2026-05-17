@@ -22,11 +22,11 @@ Every school-owned table is scoped by `schoolId`. Owner-level access must first 
 
 - Create or update the current user's school organization.
 - Get the current user's school organization.
-- Create/list classes.
-- Create/list sections.
-- Create/list subjects.
-- Create/list students.
-- Create/list teachers.
+- Create/list/edit/delete classes.
+- Create/list/edit/delete sections.
+- Create/list/edit/delete subjects.
+- Create/list/edit/delete students.
+- Create/list/edit/delete teachers.
 
 Students and teachers are internal school records in V1. They are not Ansiversa global users and do not receive login access.
 
@@ -35,11 +35,13 @@ Students and teachers are internal school records in V1. They are not Ansiversa 
 The protected `/app` workspace provides a minimal foundation interface with stacked tab sections: a header/action card followed by a separate list/empty-state card.
 
 - School organization summary card with drawer-based create/edit setup.
-- Classes section with drawer-based create flow.
-- Sections section with drawer-based create flow.
-- Subjects section with drawer-based create flow.
-- Students section with drawer-based create flow.
-- Teachers section with drawer-based create flow.
+- Classes section with drawer-based create/edit flow and confirmed delete.
+- Sections section with drawer-based create/edit flow and confirmed delete.
+- Subjects section with drawer-based create/edit flow and confirmed delete.
+- Students section with drawer-based create/edit flow and confirmed delete.
+- Teachers section with drawer-based create/edit flow and confirmed delete.
+
+Foundation update and delete actions must resolve the current owner's school before writing, and related references must remain school-scoped.
 
 The public landing page is outside this V1 foundation task and should not be rewritten for foundation CRUD work.
 

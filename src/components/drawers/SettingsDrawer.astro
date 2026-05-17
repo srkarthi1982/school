@@ -3,17 +3,28 @@ import { AvButton, AvDrawer } from "@ansiversa/components";
 
 interface Props {
   title: string;
+  titleExpression?: string;
   description?: string;
   open?: boolean;
   onClose?: string;
 }
 
-const { title, description, open = true, onClose = "$store.appDrawer.close()" } = Astro.props as Props;
+const {
+  title,
+  titleExpression,
+  description,
+  open = true,
+  onClose = "$store.appDrawer.close()",
+} = Astro.props as Props;
+const titleEffect = titleExpression
+  ? `$el.querySelector('.av-drawer__title').textContent = ${titleExpression}`
+  : undefined;
 ---
 
 <div
   class="av-drawer-overlay"
   data-open={open ? "true" : "false"}
+  x-effect={titleEffect}
   @click.self={onClose}
   @keydown.escape.window={onClose}
   @close-drawer={onClose}

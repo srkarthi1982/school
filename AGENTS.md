@@ -70,6 +70,8 @@ Do not add full school modules without approval:
 
 ## 4. Task Log (Recent)
 
+- 2026-05-17 Implemented School Foundation Edit/Delete Polish V1: Classes, Sections, Subjects, Students, and Teachers now support drawer-based edit flows and confirmed delete actions with owner/school-scoped server guards, preserved relationship validation, and refreshed lists after writes. Updated `docs/app-spec.md` for foundation edit/delete support. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
+
 - 2026-05-17 Polished the School Foundation tab layout: kept each tab description directly under its left-aligned title while preserving the action button, and changed foundation record lists to a responsive three-column card grid on desktop widths. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
 
 - 2026-05-17 Refactored School Foundation tab layout from two-column tab panels to stacked Ansiversa section cards: each Classes, Sections, Subjects, Students, and Teachers tab now has a header/action card followed by a separate list/empty-state card while preserving existing drawer create behavior. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.

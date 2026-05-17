@@ -133,12 +133,40 @@ const requireOwnedSubject = async (schoolId: string, subjectId: string) => {
   return subject;
 };
 
+const requireOwnedStudent = async (schoolId: string, studentId: string) => {
+  const student = await db
+    .select()
+    .from(Students)
+    .where(and(eq(Students.id, studentId), eq(Students.schoolId, schoolId)))
+    .get();
+  if (!student) {
+    throw new ActionError({ code: "BAD_REQUEST", message: "Student is invalid for this school." });
+  }
+  return student;
+};
+
+const requireOwnedTeacher = async (schoolId: string, teacherId: string) => {
+  const teacher = await db
+    .select()
+    .from(Teachers)
+    .where(and(eq(Teachers.id, teacherId), eq(Teachers.schoolId, schoolId)))
+    .get();
+  if (!teacher) {
+    throw new ActionError({ code: "BAD_REQUEST", message: "Teacher is invalid for this school." });
+  }
+  return teacher;
+};
+
 const organizationSchema = z.object({
   name: z.string().min(1),
   slug: z.string().optional(),
   country: z.string().min(1),
   timezone: z.string().min(1),
   currency: z.string().min(1),
+});
+
+const idSchema = z.object({
+  id: z.string().min(1),
 });
 
 const classSchema = z.object({
@@ -178,6 +206,12 @@ const teacherSchema = z.object({
   primarySubjectId: z.string().optional(),
   status: z.enum(statusValues).optional(),
 });
+
+const classUpdateSchema = idSchema.merge(classSchema);
+const sectionUpdateSchema = idSchema.merge(sectionSchema);
+const subjectUpdateSchema = idSchema.merge(subjectSchema);
+const studentUpdateSchema = idSchema.merge(studentSchema);
+const teacherUpdateSchema = idSchema.merge(teacherSchema);
 
 const listBySchool = async (schoolId: string) => {
   const [classes, sections, subjects, students, teachers] = await Promise.all([
@@ -306,6 +340,38 @@ export const createClass = defineAction({
   },
 });
 
+export const updateClass = defineAction({
+  input: classUpdateSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedClass(school.id, input.id);
+    const [item] = await db
+      .update(SchoolClasses)
+      .set({
+        name: requiredText(input.name, "Class name"),
+        sortOrder: toSortOrder(input.sortOrder),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(SchoolClasses.id, input.id), eq(SchoolClasses.schoolId, school.id)))
+      .returning();
+    return { item: normalizeDated(item) };
+  },
+});
+
+export const deleteClass = defineAction({
+  input: idSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedClass(school.id, input.id);
+    await db
+      .delete(SchoolClasses)
+      .where(and(eq(SchoolClasses.id, input.id), eq(SchoolClasses.schoolId, school.id)));
+    return { ok: true };
+  },
+});
+
 export const listSections = defineAction({
   input: z.object({}).optional(),
   async handler(_input, context: ActionAPIContext) {
@@ -343,6 +409,40 @@ export const createSection = defineAction({
   },
 });
 
+export const updateSection = defineAction({
+  input: sectionUpdateSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedSection(school.id, input.id);
+    await requireOwnedClass(school.id, input.classId);
+    const [item] = await db
+      .update(SchoolSections)
+      .set({
+        classId: input.classId,
+        name: requiredText(input.name, "Section name", MAX.short),
+        sortOrder: toSortOrder(input.sortOrder),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(SchoolSections.id, input.id), eq(SchoolSections.schoolId, school.id)))
+      .returning();
+    return { item: normalizeDated(item) };
+  },
+});
+
+export const deleteSection = defineAction({
+  input: idSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedSection(school.id, input.id);
+    await db
+      .delete(SchoolSections)
+      .where(and(eq(SchoolSections.id, input.id), eq(SchoolSections.schoolId, school.id)));
+    return { ok: true };
+  },
+});
+
 export const listSubjects = defineAction({
   input: z.object({}).optional(),
   async handler(_input, context: ActionAPIContext) {
@@ -375,6 +475,38 @@ export const createSubject = defineAction({
       })
       .returning();
     return { item: normalizeDated(item) };
+  },
+});
+
+export const updateSubject = defineAction({
+  input: subjectUpdateSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedSubject(school.id, input.id);
+    const [item] = await db
+      .update(Subjects)
+      .set({
+        name: requiredText(input.name, "Subject name"),
+        code: optionalText(input.code, MAX.code),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(Subjects.id, input.id), eq(Subjects.schoolId, school.id)))
+      .returning();
+    return { item: normalizeDated(item) };
+  },
+});
+
+export const deleteSubject = defineAction({
+  input: idSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedSubject(school.id, input.id);
+    await db
+      .delete(Subjects)
+      .where(and(eq(Subjects.id, input.id), eq(Subjects.schoolId, school.id)));
+    return { ok: true };
   },
 });
 
@@ -423,6 +555,48 @@ export const createStudent = defineAction({
   },
 });
 
+export const updateStudent = defineAction({
+  input: studentUpdateSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedStudent(school.id, input.id);
+    await requireOwnedClass(school.id, input.classId);
+    await requireOwnedSection(school.id, input.sectionId, input.classId);
+    const [item] = await db
+      .update(Students)
+      .set({
+        classId: input.classId,
+        sectionId: input.sectionId,
+        admissionNumber: requiredText(input.admissionNumber, "Admission number", MAX.short),
+        rollNumber: optionalText(input.rollNumber, MAX.short),
+        fullName: requiredText(input.fullName, "Student name"),
+        gender: input.gender ?? "unspecified",
+        dateOfBirth: optionalText(input.dateOfBirth, MAX.short),
+        guardianName: optionalText(input.guardianName),
+        guardianPhone: optionalText(input.guardianPhone, MAX.phone),
+        status: input.status ?? "active",
+        updatedAt: new Date(),
+      })
+      .where(and(eq(Students.id, input.id), eq(Students.schoolId, school.id)))
+      .returning();
+    return { item: normalizeDated(item) };
+  },
+});
+
+export const deleteStudent = defineAction({
+  input: idSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedStudent(school.id, input.id);
+    await db
+      .delete(Students)
+      .where(and(eq(Students.id, input.id), eq(Students.schoolId, school.id)));
+    return { ok: true };
+  },
+});
+
 export const listTeachers = defineAction({
   input: z.object({}).optional(),
   async handler(_input, context: ActionAPIContext) {
@@ -463,6 +637,46 @@ export const createTeacher = defineAction({
       })
       .returning();
     return { item: normalizeDated(item) };
+  },
+});
+
+export const updateTeacher = defineAction({
+  input: teacherUpdateSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedTeacher(school.id, input.id);
+    const primarySubjectId = optionalText(input.primarySubjectId, 80);
+    if (primarySubjectId) {
+      await requireOwnedSubject(school.id, primarySubjectId);
+    }
+    const [item] = await db
+      .update(Teachers)
+      .set({
+        employeeNumber: requiredText(input.employeeNumber, "Employee number", MAX.short),
+        fullName: requiredText(input.fullName, "Teacher name"),
+        phone: optionalText(input.phone, MAX.phone),
+        email: optionalText(input.email, MAX.email),
+        primarySubjectId: primarySubjectId || undefined,
+        status: input.status ?? "active",
+        updatedAt: new Date(),
+      })
+      .where(and(eq(Teachers.id, input.id), eq(Teachers.schoolId, school.id)))
+      .returning();
+    return { item: normalizeDated(item) };
+  },
+});
+
+export const deleteTeacher = defineAction({
+  input: idSchema,
+  async handler(input, context: ActionAPIContext) {
+    const user = requireUser(context);
+    const school = await requireOwnedSchool(user.id);
+    await requireOwnedTeacher(school.id, input.id);
+    await db
+      .delete(Teachers)
+      .where(and(eq(Teachers.id, input.id), eq(Teachers.schoolId, school.id)));
+    return { ok: true };
   },
 });
 
