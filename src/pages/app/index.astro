@@ -1,0 +1,49 @@
+---
+import { AvButton, AvCard, AvContainer } from "@ansiversa/components";
+import AppShell from "../../layouts/AppShell.astro";
+import { APP_META } from "../../app.meta";
+
+const title = `${APP_META.name} App`;
+const description = "Protected School Ansiversa backend workspace.";
+
+const nextSteps = [
+  "Keep this as the clean School backend foundation until school modules are approved.",
+  "Route signed-in School users through /app while preserving parent Ansiversa authentication.",
+  "Add academics, attendance, fees, and related school workflows only after the foundation is locked.",
+];
+---
+
+<AppShell title={title} description={description}>
+  <section class="av-section">
+    <AvContainer>
+      <div class="av-auth-stack-lg">
+        <AvCard className="av-auth-card">
+          <div class="av-auth-stack-md">
+            <div class="av-auth-stack-xs">
+              <p class="av-kicker">School Ansiversa</p>
+              <h1 class="av-section-title">School backend</h1>
+              <p class="av-text-soft">
+                This is the protected foundation for School Ansiversa. Authenticated users land here
+                after parent sign-in before future school management workflows are added.
+              </p>
+            </div>
+
+            <div class="av-row-wrap">
+              <AvButton href="/">Back to landing</AvButton>
+              <AvButton href="/signout" variant="ghost">Sign out</AvButton>
+            </div>
+          </div>
+        </AvCard>
+
+        <div class="grid gap-4 md:grid-cols-3">
+          {nextSteps.map((step) => (
+            <AvCard variant="soft" className="av-auth-stack-sm">
+              <h2 class="av-card-heading">Next step</h2>
+              <p class="av-text-soft">{step}</p>
+            </AvCard>
+          ))}
+        </div>
+      </div>
+    </AvContainer>
+  </section>
+</AppShell>
