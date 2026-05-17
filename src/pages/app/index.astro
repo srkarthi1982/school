@@ -210,10 +210,15 @@ const tabs = [
             <form id="school-section-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveSection()">
               <label class="av-field">
                 <span class="av-field__label">Class *</span>
-                <select class="av-input" x-model="$store.schoolFoundation.sectionForm.classId" required>
+                <select
+                  class="av-input"
+                  x-model="$store.schoolFoundation.sectionForm.classId"
+                  x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.sectionForm.classId })"
+                  required
+                >
                   <option value="">Select class</option>
                   <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
-                    <option :value="item.id" x-text="item.name"></option>
+                    <option :value="String(item.id)" x-text="item.name"></option>
                   </template>
                 </select>
               </label>
@@ -338,10 +343,14 @@ const tabs = [
               <AvInput label="Email" name="drawer-teacher-email" type="email" x-model="$store.schoolFoundation.teacherForm.email" />
               <label class="av-field">
                 <span class="av-field__label">Primary subject</span>
-                <select class="av-input" x-model="$store.schoolFoundation.teacherForm.primarySubjectId">
+                <select
+                  class="av-input"
+                  x-model="$store.schoolFoundation.teacherForm.primarySubjectId"
+                  x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.teacherForm.primarySubjectId })"
+                >
                   <option value="">Select subject</option>
                   <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
-                    <option :value="item.id" x-text="item.name"></option>
+                    <option :value="String(item.id)" x-text="item.name"></option>
                   </template>
                 </select>
               </label>
