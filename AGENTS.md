@@ -70,6 +70,8 @@ Do not add full school modules without approval:
 
 ## 4. Task Log (Recent)
 
+- 2026-05-17 Polished the School Foundation tab layout: kept each tab description directly under its left-aligned title while preserving the action button, and changed foundation record lists to a responsive three-column card grid on desktop widths. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
+
 - 2026-05-17 Refactored School Foundation tab layout from two-column tab panels to stacked Ansiversa section cards: each Classes, Sections, Subjects, Students, and Teachers tab now has a header/action card followed by a separate list/empty-state card while preserving existing drawer create behavior. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
 
 - 2026-05-17 Refactored all School Foundation create forms into Ansiversa drawer flows: removed inline create forms from Classes, Sections, Subjects, Students, and Teachers tabs; added compact tab intro/action surfaces; moved existing fields into drawer forms with validation, double-submit protection, list refresh, reset-on-success, success close, cancel behavior, and visible drawer errors. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
