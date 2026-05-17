@@ -32,7 +32,7 @@ Students and teachers are internal school records in V1. They are not Ansiversa 
 
 ## V1 UI
 
-The protected `/app` workspace provides a minimal foundation interface:
+The protected `/app` workspace provides a minimal foundation interface with stacked tab sections: a header/action card followed by a separate list/empty-state card.
 
 - School organization summary card with drawer-based create/edit setup.
 - Classes section with drawer-based create flow.

@@ -352,122 +352,142 @@ const tabs = [
           </template>
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'classes'">
-            <div class="school-foundation__split">
-              <div class="school-foundation__section-intro">
-                <h2 class="av-card-heading">Classes</h2>
-                <p class="av-text-soft">Create the class levels used by sections, students, and future academic workflows.</p>
-                <AvButton type="button" @click.prevent="$store.schoolFoundation.openClassDrawer(); $store.appDrawer.open('class')">Add class</AvButton>
-              </div>
+            <div class="school-foundation__stack">
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <h2 class="av-card-heading">Classes</h2>
+                  <p class="av-text-soft">Create and manage class levels for this school.</p>
+                  <AvButton type="button" @click.prevent="$store.schoolFoundation.openClassDrawer(); $store.appDrawer.open('class')">Add class</AvButton>
+                </div>
+              </section>
 
-              <div class="school-foundation__list">
-                <template x-if="$store.schoolFoundation.classes.length === 0">
-                  <p class="av-text-soft">No classes yet.</p>
-                </template>
-                <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
-                  <article class="school-foundation__row">
-                    <strong x-text="item.name"></strong>
-                    <span class="av-text-soft">Order <span x-text="item.sortOrder"></span></span>
-                  </article>
-                </template>
-              </div>
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__list">
+                  <template x-if="$store.schoolFoundation.classes.length === 0">
+                    <p class="av-text-soft">No classes yet.</p>
+                  </template>
+                  <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                    <article class="school-foundation__row">
+                      <strong x-text="item.name"></strong>
+                      <span class="av-text-soft">Order <span x-text="item.sortOrder"></span></span>
+                    </article>
+                  </template>
+                </div>
+              </section>
             </div>
           </div>
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'sections'">
-            <div class="school-foundation__split">
-              <div class="school-foundation__section-intro">
-                <h2 class="av-card-heading">Sections</h2>
-                <p class="av-text-soft">Group students within each class using simple section records.</p>
-                <AvButton type="button" @click.prevent="$store.schoolFoundation.openSectionDrawer(); $store.appDrawer.open('section')">Add section</AvButton>
-              </div>
+            <div class="school-foundation__stack">
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <h2 class="av-card-heading">Sections</h2>
+                  <p class="av-text-soft">Create and manage sections within each class.</p>
+                  <AvButton type="button" @click.prevent="$store.schoolFoundation.openSectionDrawer(); $store.appDrawer.open('section')">Add section</AvButton>
+                </div>
+              </section>
 
-              <div class="school-foundation__list">
-                <template x-if="$store.schoolFoundation.sections.length === 0">
-                  <p class="av-text-soft">No sections yet.</p>
-                </template>
-                <template x-for="item in $store.schoolFoundation.sections" :key="item.id">
-                  <article class="school-foundation__row">
-                    <strong x-text="item.name"></strong>
-                    <span class="av-text-soft" x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
-                  </article>
-                </template>
-              </div>
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__list">
+                  <template x-if="$store.schoolFoundation.sections.length === 0">
+                    <p class="av-text-soft">No sections yet.</p>
+                  </template>
+                  <template x-for="item in $store.schoolFoundation.sections" :key="item.id">
+                    <article class="school-foundation__row">
+                      <strong x-text="item.name"></strong>
+                      <span class="av-text-soft" x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
+                    </article>
+                  </template>
+                </div>
+              </section>
             </div>
           </div>
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'subjects'">
-            <div class="school-foundation__split">
-              <div class="school-foundation__section-intro">
-                <h2 class="av-card-heading">Subjects</h2>
-                <p class="av-text-soft">Maintain the subject catalog that teachers and future academics can reference.</p>
-                <AvButton type="button" @click.prevent="$store.schoolFoundation.openSubjectDrawer(); $store.appDrawer.open('subject')">Add subject</AvButton>
-              </div>
+            <div class="school-foundation__stack">
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <h2 class="av-card-heading">Subjects</h2>
+                  <p class="av-text-soft">Create and manage the subject catalog for this school.</p>
+                  <AvButton type="button" @click.prevent="$store.schoolFoundation.openSubjectDrawer(); $store.appDrawer.open('subject')">Add subject</AvButton>
+                </div>
+              </section>
 
-              <div class="school-foundation__list">
-                <template x-if="$store.schoolFoundation.subjects.length === 0">
-                  <p class="av-text-soft">No subjects yet.</p>
-                </template>
-                <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
-                  <article class="school-foundation__row">
-                    <strong x-text="item.name"></strong>
-                    <span class="av-text-soft" x-text="item.code || '-'"></span>
-                  </article>
-                </template>
-              </div>
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__list">
+                  <template x-if="$store.schoolFoundation.subjects.length === 0">
+                    <p class="av-text-soft">No subjects yet.</p>
+                  </template>
+                  <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
+                    <article class="school-foundation__row">
+                      <strong x-text="item.name"></strong>
+                      <span class="av-text-soft" x-text="item.code || '-'"></span>
+                    </article>
+                  </template>
+                </div>
+              </section>
             </div>
           </div>
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'students'">
-            <div class="school-foundation__split">
-              <div class="school-foundation__section-intro">
-                <h2 class="av-card-heading">Students</h2>
-                <p class="av-text-soft">Add internal student records scoped to this school. Student login is not part of V1.</p>
-                <AvButton type="button" @click.prevent="$store.schoolFoundation.openStudentDrawer(); $store.appDrawer.open('student')">Add student</AvButton>
-              </div>
+            <div class="school-foundation__stack">
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <h2 class="av-card-heading">Students</h2>
+                  <p class="av-text-soft">Create internal student records scoped to this school.</p>
+                  <AvButton type="button" @click.prevent="$store.schoolFoundation.openStudentDrawer(); $store.appDrawer.open('student')">Add student</AvButton>
+                </div>
+              </section>
 
-              <div class="school-foundation__list">
-                <template x-if="$store.schoolFoundation.students.length === 0">
-                  <p class="av-text-soft">No students yet.</p>
-                </template>
-                <template x-for="item in $store.schoolFoundation.students" :key="item.id">
-                  <article class="school-foundation__row">
-                    <strong x-text="item.fullName"></strong>
-                    <span class="av-text-soft">
-                      <span x-text="item.admissionNumber"></span>
-                      ·
-                      <span x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
-                      /
-                      <span x-text="$store.schoolFoundation.getSectionName(item.sectionId)"></span>
-                    </span>
-                  </article>
-                </template>
-              </div>
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__list">
+                  <template x-if="$store.schoolFoundation.students.length === 0">
+                    <p class="av-text-soft">No students yet.</p>
+                  </template>
+                  <template x-for="item in $store.schoolFoundation.students" :key="item.id">
+                    <article class="school-foundation__row">
+                      <strong x-text="item.fullName"></strong>
+                      <span class="av-text-soft">
+                        <span x-text="item.admissionNumber"></span>
+                        ·
+                        <span x-text="$store.schoolFoundation.getClassName(item.classId)"></span>
+                        /
+                        <span x-text="$store.schoolFoundation.getSectionName(item.sectionId)"></span>
+                      </span>
+                    </article>
+                  </template>
+                </div>
+              </section>
             </div>
           </div>
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'teachers'">
-            <div class="school-foundation__split">
-              <div class="school-foundation__section-intro">
-                <h2 class="av-card-heading">Teachers</h2>
-                <p class="av-text-soft">Add internal teacher records for this school. Teacher login is not part of V1.</p>
-                <AvButton type="button" @click.prevent="$store.schoolFoundation.openTeacherDrawer(); $store.appDrawer.open('teacher')">Add teacher</AvButton>
-              </div>
+            <div class="school-foundation__stack">
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__section-intro">
+                  <h2 class="av-card-heading">Teachers</h2>
+                  <p class="av-text-soft">Create internal teacher records for this school.</p>
+                  <AvButton type="button" @click.prevent="$store.schoolFoundation.openTeacherDrawer(); $store.appDrawer.open('teacher')">Add teacher</AvButton>
+                </div>
+              </section>
 
-              <div class="school-foundation__list">
-                <template x-if="$store.schoolFoundation.teachers.length === 0">
-                  <p class="av-text-soft">No teachers yet.</p>
-                </template>
-                <template x-for="item in $store.schoolFoundation.teachers" :key="item.id">
-                  <article class="school-foundation__row">
-                    <strong x-text="item.fullName"></strong>
-                    <span class="av-text-soft">
-                      <span x-text="item.employeeNumber"></span>
-                      ·
-                      <span x-text="$store.schoolFoundation.getSubjectName(item.primarySubjectId)"></span>
-                    </span>
-                  </article>
-                </template>
-              </div>
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__list">
+                  <template x-if="$store.schoolFoundation.teachers.length === 0">
+                    <p class="av-text-soft">No teachers yet.</p>
+                  </template>
+                  <template x-for="item in $store.schoolFoundation.teachers" :key="item.id">
+                    <article class="school-foundation__row">
+                      <strong x-text="item.fullName"></strong>
+                      <span class="av-text-soft">
+                        <span x-text="item.employeeNumber"></span>
+                        ·
+                        <span x-text="$store.schoolFoundation.getSubjectName(item.primarySubjectId)"></span>
+                      </span>
+                    </article>
+                  </template>
+                </div>
+              </section>
             </div>
           </div>
         </AvCard>
@@ -478,7 +498,7 @@ const tabs = [
   <style>
     .school-foundation__header,
     .school-foundation__card-grid,
-    .school-foundation__split {
+    .school-foundation__stack {
       display: grid;
       gap: 1.25rem;
     }
@@ -488,8 +508,7 @@ const tabs = [
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .school-foundation__card-grid,
-    .school-foundation__split {
+    .school-foundation__card-grid {
       grid-template-columns: minmax(0, 1fr);
     }
 
@@ -574,13 +593,23 @@ const tabs = [
       margin-top: 0.75rem;
     }
 
-    .school-foundation__section-intro {
-      align-content: start;
+    .school-foundation__section-card {
       border: 1px solid rgba(148, 163, 184, 0.14);
       border-radius: 8px;
-      display: grid;
-      gap: 0.65rem;
       padding: 0.85rem;
+    }
+
+    .school-foundation__section-intro {
+      align-content: start;
+      align-items: start;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      justify-content: space-between;
+    }
+
+    .school-foundation__section-intro :global(.av-text-soft) {
+      margin: 0;
     }
 
     .school-foundation__list {
@@ -599,9 +628,13 @@ const tabs = [
 
     @media (min-width: 900px) {
       .school-foundation__header,
-      .school-foundation__card-grid,
-      .school-foundation__split {
+      .school-foundation__card-grid {
         grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+      }
+
+      .school-foundation__section-intro {
+        align-items: center;
+        flex-direction: row;
       }
     }
   </style>
