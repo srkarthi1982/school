@@ -274,21 +274,27 @@ const tabs = [
                 <select
                   class="av-input"
                   x-model="$store.schoolFoundation.studentForm.classId"
+                  x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.studentForm.classId })"
                   @change="$store.schoolFoundation.setStudentClass($event.target.value)"
                   required
                 >
                   <option value="">Select class</option>
                   <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
-                    <option :value="item.id" x-text="item.name"></option>
+                    <option :value="String(item.id)" x-text="item.name"></option>
                   </template>
                 </select>
               </label>
               <label class="av-field">
                 <span class="av-field__label">Section *</span>
-                <select class="av-input" x-model="$store.schoolFoundation.studentForm.sectionId" required>
+                <select
+                  class="av-input"
+                  x-model="$store.schoolFoundation.studentForm.sectionId"
+                  x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.studentForm.sectionId })"
+                  required
+                >
                   <option value="">Select section</option>
                   <template x-for="item in $store.schoolFoundation.sectionsForClass($store.schoolFoundation.studentForm.classId)" :key="item.id">
-                    <option :value="item.id" x-text="item.name"></option>
+                    <option :value="String(item.id)" x-text="item.name"></option>
                   </template>
                 </select>
               </label>
