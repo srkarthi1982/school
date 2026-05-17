@@ -70,6 +70,8 @@ Do not add full school modules without approval:
 
 ## 4. Task Log (Recent)
 
+- 2026-05-17 Refactored all School Foundation create forms into Ansiversa drawer flows: removed inline create forms from Classes, Sections, Subjects, Students, and Teachers tabs; added compact tab intro/action surfaces; moved existing fields into drawer forms with validation, double-submit protection, list refresh, reset-on-success, success close, cancel behavior, and visible drawer errors. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
+
 - 2026-05-17 Refactored School Organization setup on `/app` to follow Ansiversa Drawer UX Standard: replaced the inline setup form with a readable organization summary/empty state card, moved create/edit fields into drawer flows with validation, cancel/close, double-submit protection, success close, and visible drawer errors. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
 
 - 2026-05-17 Added School DB Foundation V1: created owner-scoped school organization, academic year, class, section, subject, student, and teacher tables; added safe Astro actions for create/list foundation records; replaced `/app` placeholder with a minimal owner workspace for setup and master records; documented scope/exclusions in `docs/app-spec.md`. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints), `npm run build` passed, and `npm run db:push` applied the remote School Turso schema.

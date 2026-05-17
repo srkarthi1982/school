@@ -177,6 +177,162 @@ const tabs = [
           </SettingsDrawer>
         </template>
 
+        <template x-if="$store.appDrawer.activeDrawer === 'class'">
+          <SettingsDrawer title="Add class" description="Create a class level for this school.">
+            <form id="school-class-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createClass()">
+              <AvInput label="Class name" name="drawer-class-name" x-model="$store.schoolFoundation.classForm.name" required />
+              <AvInput label="Sort order" name="drawer-class-sort" type="number" x-model.number="$store.schoolFoundation.classForm.sortOrder" />
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.foundationDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.foundationDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-class-drawer-form" :disabled="$store.schoolFoundation.loading">
+                <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save class'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'section'">
+          <SettingsDrawer title="Add section" description="Create a section under an existing class.">
+            <form id="school-section-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createSection()">
+              <label class="av-field">
+                <span class="av-field__label">Class *</span>
+                <select class="av-input" x-model="$store.schoolFoundation.sectionForm.classId" required>
+                  <option value="">Select class</option>
+                  <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                    <option :value="item.id" x-text="item.name"></option>
+                  </template>
+                </select>
+              </label>
+              <AvInput label="Section name" name="drawer-section-name" x-model="$store.schoolFoundation.sectionForm.name" required />
+              <AvInput label="Sort order" name="drawer-section-sort" type="number" x-model.number="$store.schoolFoundation.sectionForm.sortOrder" />
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.foundationDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.foundationDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-section-drawer-form" :disabled="$store.schoolFoundation.loading">
+                <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save section'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'subject'">
+          <SettingsDrawer title="Add subject" description="Create a subject in the school catalog.">
+            <form id="school-subject-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createSubject()">
+              <AvInput label="Subject name" name="drawer-subject-name" x-model="$store.schoolFoundation.subjectForm.name" required />
+              <AvInput label="Code" name="drawer-subject-code" x-model="$store.schoolFoundation.subjectForm.code" />
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.foundationDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.foundationDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-subject-drawer-form" :disabled="$store.schoolFoundation.loading">
+                <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save subject'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'student'">
+          <SettingsDrawer title="Add student" description="Create an internal student record for this school.">
+            <form id="school-student-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createStudent()">
+              <AvInput label="Admission number" name="drawer-student-admission" x-model="$store.schoolFoundation.studentForm.admissionNumber" required />
+              <AvInput label="Roll number" name="drawer-student-roll" x-model="$store.schoolFoundation.studentForm.rollNumber" />
+              <AvInput label="Full name" name="drawer-student-name" x-model="$store.schoolFoundation.studentForm.fullName" required />
+              <AvInput label="Date of birth" name="drawer-student-dob" type="date" x-model="$store.schoolFoundation.studentForm.dateOfBirth" />
+              <label class="av-field">
+                <span class="av-field__label">Class *</span>
+                <select class="av-input" x-model="$store.schoolFoundation.studentForm.classId" required>
+                  <option value="">Select class</option>
+                  <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                    <option :value="item.id" x-text="item.name"></option>
+                  </template>
+                </select>
+              </label>
+              <label class="av-field">
+                <span class="av-field__label">Section *</span>
+                <select class="av-input" x-model="$store.schoolFoundation.studentForm.sectionId" required>
+                  <option value="">Select section</option>
+                  <template x-for="item in $store.schoolFoundation.sectionsForClass($store.schoolFoundation.studentForm.classId)" :key="item.id">
+                    <option :value="item.id" x-text="item.name"></option>
+                  </template>
+                </select>
+              </label>
+              <AvSelect label="Gender" name="drawer-student-gender" x-model="$store.schoolFoundation.studentForm.gender">
+                <option value="unspecified">Unspecified</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="other">Other</option>
+              </AvSelect>
+              <AvSelect label="Status" name="drawer-student-status" x-model="$store.schoolFoundation.studentForm.status">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </AvSelect>
+              <AvInput label="Guardian name" name="drawer-guardian-name" x-model="$store.schoolFoundation.studentForm.guardianName" />
+              <AvInput label="Guardian phone" name="drawer-guardian-phone" x-model="$store.schoolFoundation.studentForm.guardianPhone" />
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.foundationDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.foundationDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-student-drawer-form" :disabled="$store.schoolFoundation.loading">
+                <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save student'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'teacher'">
+          <SettingsDrawer title="Add teacher" description="Create an internal teacher record for this school.">
+            <form id="school-teacher-drawer-form" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.createTeacher()">
+              <AvInput label="Employee number" name="drawer-teacher-employee" x-model="$store.schoolFoundation.teacherForm.employeeNumber" required />
+              <AvInput label="Full name" name="drawer-teacher-name" x-model="$store.schoolFoundation.teacherForm.fullName" required />
+              <AvInput label="Phone" name="drawer-teacher-phone" x-model="$store.schoolFoundation.teacherForm.phone" />
+              <AvInput label="Email" name="drawer-teacher-email" type="email" x-model="$store.schoolFoundation.teacherForm.email" />
+              <label class="av-field">
+                <span class="av-field__label">Primary subject</span>
+                <select class="av-input" x-model="$store.schoolFoundation.teacherForm.primarySubjectId">
+                  <option value="">Select subject</option>
+                  <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
+                    <option :value="item.id" x-text="item.name"></option>
+                  </template>
+                </select>
+              </label>
+              <AvSelect label="Status" name="drawer-teacher-status" x-model="$store.schoolFoundation.teacherForm.status">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </AvSelect>
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.foundationDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.foundationDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton type="submit" form="school-teacher-drawer-form" :disabled="$store.schoolFoundation.loading">
+                <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save teacher'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
         <AvCard variant="soft" className="school-foundation__workspace">
           <div class="school-foundation__tabs" role="tablist" aria-label="School foundation sections">
             {tabs.map((tab) => (
@@ -197,12 +353,11 @@ const tabs = [
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'classes'">
             <div class="school-foundation__split">
-              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createClass()">
-                <h2 class="av-card-heading">Add class</h2>
-                <AvInput label="Class name" name="class-name" x-model="$store.schoolFoundation.classForm.name" required />
-                <AvInput label="Sort order" name="class-sort" type="number" x-model.number="$store.schoolFoundation.classForm.sortOrder" />
-                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add class</AvButton>
-              </form>
+              <div class="school-foundation__section-intro">
+                <h2 class="av-card-heading">Classes</h2>
+                <p class="av-text-soft">Create the class levels used by sections, students, and future academic workflows.</p>
+                <AvButton type="button" @click.prevent="$store.schoolFoundation.openClassDrawer(); $store.appDrawer.open('class')">Add class</AvButton>
+              </div>
 
               <div class="school-foundation__list">
                 <template x-if="$store.schoolFoundation.classes.length === 0">
@@ -220,19 +375,11 @@ const tabs = [
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'sections'">
             <div class="school-foundation__split">
-              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createSection()">
-                <h2 class="av-card-heading">Add section</h2>
-                <label class="av-label" for="section-class">Class *</label>
-                <select id="section-class" class="av-input" x-model="$store.schoolFoundation.sectionForm.classId" required>
-                  <option value="">Select class</option>
-                  <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
-                    <option :value="item.id" x-text="item.name"></option>
-                  </template>
-                </select>
-                <AvInput label="Section name" name="section-name" x-model="$store.schoolFoundation.sectionForm.name" required />
-                <AvInput label="Sort order" name="section-sort" type="number" x-model.number="$store.schoolFoundation.sectionForm.sortOrder" />
-                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add section</AvButton>
-              </form>
+              <div class="school-foundation__section-intro">
+                <h2 class="av-card-heading">Sections</h2>
+                <p class="av-text-soft">Group students within each class using simple section records.</p>
+                <AvButton type="button" @click.prevent="$store.schoolFoundation.openSectionDrawer(); $store.appDrawer.open('section')">Add section</AvButton>
+              </div>
 
               <div class="school-foundation__list">
                 <template x-if="$store.schoolFoundation.sections.length === 0">
@@ -250,12 +397,11 @@ const tabs = [
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'subjects'">
             <div class="school-foundation__split">
-              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createSubject()">
-                <h2 class="av-card-heading">Add subject</h2>
-                <AvInput label="Subject name" name="subject-name" x-model="$store.schoolFoundation.subjectForm.name" required />
-                <AvInput label="Code" name="subject-code" x-model="$store.schoolFoundation.subjectForm.code" />
-                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add subject</AvButton>
-              </form>
+              <div class="school-foundation__section-intro">
+                <h2 class="av-card-heading">Subjects</h2>
+                <p class="av-text-soft">Maintain the subject catalog that teachers and future academics can reference.</p>
+                <AvButton type="button" @click.prevent="$store.schoolFoundation.openSubjectDrawer(); $store.appDrawer.open('subject')">Add subject</AvButton>
+              </div>
 
               <div class="school-foundation__list">
                 <template x-if="$store.schoolFoundation.subjects.length === 0">
@@ -273,50 +419,11 @@ const tabs = [
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'students'">
             <div class="school-foundation__split">
-              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createStudent()">
-                <h2 class="av-card-heading">Add student</h2>
-                <div class="school-foundation__form-grid">
-                  <AvInput label="Admission number" name="student-admission" x-model="$store.schoolFoundation.studentForm.admissionNumber" required />
-                  <AvInput label="Roll number" name="student-roll" x-model="$store.schoolFoundation.studentForm.rollNumber" />
-                  <AvInput label="Full name" name="student-name" x-model="$store.schoolFoundation.studentForm.fullName" required />
-                  <AvInput label="Date of birth" name="student-dob" type="date" x-model="$store.schoolFoundation.studentForm.dateOfBirth" />
-                </div>
-                <div class="school-foundation__form-grid">
-                  <label class="av-field">
-                    <span class="av-field__label">Class *</span>
-                    <select class="av-input" x-model="$store.schoolFoundation.studentForm.classId" required>
-                      <option value="">Select class</option>
-                      <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
-                        <option :value="item.id" x-text="item.name"></option>
-                      </template>
-                    </select>
-                  </label>
-                  <label class="av-field">
-                    <span class="av-field__label">Section *</span>
-                    <select class="av-input" x-model="$store.schoolFoundation.studentForm.sectionId" required>
-                      <option value="">Select section</option>
-                      <template x-for="item in $store.schoolFoundation.sectionsForClass($store.schoolFoundation.studentForm.classId)" :key="item.id">
-                        <option :value="item.id" x-text="item.name"></option>
-                      </template>
-                    </select>
-                  </label>
-                  <AvSelect label="Gender" name="student-gender" x-model="$store.schoolFoundation.studentForm.gender">
-                    <option value="unspecified">Unspecified</option>
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="other">Other</option>
-                  </AvSelect>
-                  <AvSelect label="Status" name="student-status" x-model="$store.schoolFoundation.studentForm.status">
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </AvSelect>
-                </div>
-                <div class="school-foundation__form-grid">
-                  <AvInput label="Guardian name" name="guardian-name" x-model="$store.schoolFoundation.studentForm.guardianName" />
-                  <AvInput label="Guardian phone" name="guardian-phone" x-model="$store.schoolFoundation.studentForm.guardianPhone" />
-                </div>
-                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add student</AvButton>
-              </form>
+              <div class="school-foundation__section-intro">
+                <h2 class="av-card-heading">Students</h2>
+                <p class="av-text-soft">Add internal student records scoped to this school. Student login is not part of V1.</p>
+                <AvButton type="button" @click.prevent="$store.schoolFoundation.openStudentDrawer(); $store.appDrawer.open('student')">Add student</AvButton>
+              </div>
 
               <div class="school-foundation__list">
                 <template x-if="$store.schoolFoundation.students.length === 0">
@@ -340,31 +447,11 @@ const tabs = [
 
           <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'teachers'">
             <div class="school-foundation__split">
-              <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.createTeacher()">
-                <h2 class="av-card-heading">Add teacher</h2>
-                <div class="school-foundation__form-grid">
-                  <AvInput label="Employee number" name="teacher-employee" x-model="$store.schoolFoundation.teacherForm.employeeNumber" required />
-                  <AvInput label="Full name" name="teacher-name" x-model="$store.schoolFoundation.teacherForm.fullName" required />
-                  <AvInput label="Phone" name="teacher-phone" x-model="$store.schoolFoundation.teacherForm.phone" />
-                  <AvInput label="Email" name="teacher-email" type="email" x-model="$store.schoolFoundation.teacherForm.email" />
-                </div>
-                <div class="school-foundation__form-grid">
-                  <label class="av-field">
-                    <span class="av-field__label">Primary subject</span>
-                    <select class="av-input" x-model="$store.schoolFoundation.teacherForm.primarySubjectId">
-                      <option value="">Select subject</option>
-                      <template x-for="item in $store.schoolFoundation.subjects" :key="item.id">
-                        <option :value="item.id" x-text="item.name"></option>
-                      </template>
-                    </select>
-                  </label>
-                  <AvSelect label="Status" name="teacher-status" x-model="$store.schoolFoundation.teacherForm.status">
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </AvSelect>
-                </div>
-                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Add teacher</AvButton>
-              </form>
+              <div class="school-foundation__section-intro">
+                <h2 class="av-card-heading">Teachers</h2>
+                <p class="av-text-soft">Add internal teacher records for this school. Teacher login is not part of V1.</p>
+                <AvButton type="button" @click.prevent="$store.schoolFoundation.openTeacherDrawer(); $store.appDrawer.open('teacher')">Add teacher</AvButton>
+              </div>
 
               <div class="school-foundation__list">
                 <template x-if="$store.schoolFoundation.teachers.length === 0">
@@ -485,6 +572,15 @@ const tabs = [
 
     .school-foundation__tab-panel {
       margin-top: 0.75rem;
+    }
+
+    .school-foundation__section-intro {
+      align-content: start;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-radius: 8px;
+      display: grid;
+      gap: 0.65rem;
+      padding: 0.85rem;
     }
 
     .school-foundation__list {

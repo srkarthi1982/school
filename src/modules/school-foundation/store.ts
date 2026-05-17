@@ -159,6 +159,7 @@ export class SchoolFoundationStore extends AvBaseStore {
   error: string | null = null;
   success: string | null = null;
   schoolDrawerError: string | null = null;
+  foundationDrawerError: string | null = null;
   schoolForm = defaultSchoolForm();
   classForm = defaultClassForm();
   sectionForm = defaultSectionForm();
@@ -214,9 +215,9 @@ export class SchoolFoundationStore extends AvBaseStore {
     appDrawer?.close?.();
   }
 
-  private requireSchool() {
+  private requireSchoolForDrawer() {
     if (!this.hasSchool) {
-      this.error = this.schoolRequiredMessage;
+      this.foundationDrawerError = this.schoolRequiredMessage;
       return false;
     }
     return true;
@@ -238,6 +239,71 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.success = null;
     this.schoolDrawerError = null;
     this.resetSchoolForm();
+  }
+
+  openClassDrawer() {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.classForm = defaultClassForm();
+  }
+
+  openSectionDrawer() {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.sectionForm = defaultSectionForm();
+  }
+
+  openSubjectDrawer() {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.subjectForm = defaultSubjectForm();
+  }
+
+  openStudentDrawer() {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.studentForm = defaultStudentForm();
+  }
+
+  openTeacherDrawer() {
+    this.error = null;
+    this.success = null;
+    this.foundationDrawerError = null;
+    this.teacherForm = defaultTeacherForm();
+  }
+
+  private async refreshClasses() {
+    const result = await actions.schoolFoundation.listClasses({});
+    const data = this.unwrap<{ items: ClassDTO[] }>(result);
+    this.classes = data.items ?? [];
+  }
+
+  private async refreshSections() {
+    const result = await actions.schoolFoundation.listSections({});
+    const data = this.unwrap<{ items: SectionDTO[] }>(result);
+    this.sections = data.items ?? [];
+  }
+
+  private async refreshSubjects() {
+    const result = await actions.schoolFoundation.listSubjects({});
+    const data = this.unwrap<{ items: SubjectDTO[] }>(result);
+    this.subjects = data.items ?? [];
+  }
+
+  private async refreshStudents() {
+    const result = await actions.schoolFoundation.listStudents({});
+    const data = this.unwrap<{ items: StudentDTO[] }>(result);
+    this.students = data.items ?? [];
+  }
+
+  private async refreshTeachers() {
+    const result = await actions.schoolFoundation.listTeachers({});
+    const data = this.unwrap<{ items: TeacherDTO[] }>(result);
+    this.teachers = data.items ?? [];
   }
 
   async reload() {
@@ -284,105 +350,115 @@ export class SchoolFoundationStore extends AvBaseStore {
   }
 
   async createClass() {
-    if (!this.requireSchool()) return;
+    if (this.loading) return;
+    if (!this.requireSchoolForDrawer()) return;
     if (!this.classForm.name.trim()) {
-      this.error = "Class name is required.";
+      this.foundationDrawerError = "Class name is required.";
       return;
     }
 
     this.begin();
+    this.foundationDrawerError = null;
     try {
-      const result = await actions.schoolFoundation.createClass({ ...this.classForm });
-      const data = this.unwrap<{ item: ClassDTO }>(result);
-      this.classes = [...this.classes, data.item].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+      await actions.schoolFoundation.createClass({ ...this.classForm });
+      await this.refreshClasses();
       this.classForm = defaultClassForm();
       this.success = "Class added.";
+      this.closeDrawer();
     } catch (err: any) {
-      this.fail(err, "Unable to add class.");
+      this.foundationDrawerError = err?.message || "Unable to add class.";
     } finally {
       this.finish();
     }
   }
 
   async createSection() {
-    if (!this.requireSchool()) return;
+    if (this.loading) return;
+    if (!this.requireSchoolForDrawer()) return;
     if (!this.sectionForm.classId || !this.sectionForm.name.trim()) {
-      this.error = "Class and section name are required.";
+      this.foundationDrawerError = "Class and section name are required.";
       return;
     }
 
     this.begin();
+    this.foundationDrawerError = null;
     try {
-      const result = await actions.schoolFoundation.createSection({ ...this.sectionForm });
-      const data = this.unwrap<{ item: SectionDTO }>(result);
-      this.sections = [...this.sections, data.item].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+      await actions.schoolFoundation.createSection({ ...this.sectionForm });
+      await this.refreshSections();
       this.sectionForm = defaultSectionForm();
       this.success = "Section added.";
+      this.closeDrawer();
     } catch (err: any) {
-      this.fail(err, "Unable to add section.");
+      this.foundationDrawerError = err?.message || "Unable to add section.";
     } finally {
       this.finish();
     }
   }
 
   async createSubject() {
-    if (!this.requireSchool()) return;
+    if (this.loading) return;
+    if (!this.requireSchoolForDrawer()) return;
     if (!this.subjectForm.name.trim()) {
-      this.error = "Subject name is required.";
+      this.foundationDrawerError = "Subject name is required.";
       return;
     }
 
     this.begin();
+    this.foundationDrawerError = null;
     try {
-      const result = await actions.schoolFoundation.createSubject({ ...this.subjectForm });
-      const data = this.unwrap<{ item: SubjectDTO }>(result);
-      this.subjects = [...this.subjects, data.item].sort((a, b) => a.name.localeCompare(b.name));
+      await actions.schoolFoundation.createSubject({ ...this.subjectForm });
+      await this.refreshSubjects();
       this.subjectForm = defaultSubjectForm();
       this.success = "Subject added.";
+      this.closeDrawer();
     } catch (err: any) {
-      this.fail(err, "Unable to add subject.");
+      this.foundationDrawerError = err?.message || "Unable to add subject.";
     } finally {
       this.finish();
     }
   }
 
   async createStudent() {
-    if (!this.requireSchool()) return;
+    if (this.loading) return;
+    if (!this.requireSchoolForDrawer()) return;
     if (!this.studentForm.classId || !this.studentForm.sectionId || !this.studentForm.admissionNumber.trim() || !this.studentForm.fullName.trim()) {
-      this.error = "Class, section, admission number, and student name are required.";
+      this.foundationDrawerError = "Class, section, admission number, and student name are required.";
       return;
     }
 
     this.begin();
+    this.foundationDrawerError = null;
     try {
-      const result = await actions.schoolFoundation.createStudent({ ...this.studentForm });
-      const data = this.unwrap<{ item: StudentDTO }>(result);
-      this.students = [data.item, ...this.students];
+      await actions.schoolFoundation.createStudent({ ...this.studentForm });
+      await this.refreshStudents();
       this.studentForm = defaultStudentForm();
       this.success = "Student added.";
+      this.closeDrawer();
     } catch (err: any) {
-      this.fail(err, "Unable to add student.");
+      this.foundationDrawerError = err?.message || "Unable to add student.";
     } finally {
       this.finish();
     }
   }
 
   async createTeacher() {
-    if (!this.requireSchool()) return;
+    if (this.loading) return;
+    if (!this.requireSchoolForDrawer()) return;
     if (!this.teacherForm.employeeNumber.trim() || !this.teacherForm.fullName.trim()) {
-      this.error = "Employee number and teacher name are required.";
+      this.foundationDrawerError = "Employee number and teacher name are required.";
       return;
     }
 
     this.begin();
+    this.foundationDrawerError = null;
     try {
-      const result = await actions.schoolFoundation.createTeacher({ ...this.teacherForm });
-      const data = this.unwrap<{ item: TeacherDTO }>(result);
-      this.teachers = [data.item, ...this.teachers];
+      await actions.schoolFoundation.createTeacher({ ...this.teacherForm });
+      await this.refreshTeachers();
       this.teacherForm = defaultTeacherForm();
       this.success = "Teacher added.";
+      this.closeDrawer();
     } catch (err: any) {
-      this.fail(err, "Unable to add teacher.");
+      this.foundationDrawerError = err?.message || "Unable to add teacher.";
     } finally {
       this.finish();
     }

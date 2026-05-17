@@ -35,11 +35,11 @@ Students and teachers are internal school records in V1. They are not Ansiversa 
 The protected `/app` workspace provides a minimal foundation interface:
 
 - School organization summary card with drawer-based create/edit setup.
-- Classes section.
-- Sections section.
-- Subjects section.
-- Students section.
-- Teachers section.
+- Classes section with drawer-based create flow.
+- Sections section with drawer-based create flow.
+- Subjects section with drawer-based create flow.
+- Students section with drawer-based create flow.
+- Teachers section with drawer-based create flow.
 
 The public landing page is outside this V1 foundation task and should not be rewritten for foundation CRUD work.
 
