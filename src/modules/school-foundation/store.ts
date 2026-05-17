@@ -158,6 +158,7 @@ export class SchoolFoundationStore extends AvBaseStore {
   loading = false;
   error: string | null = null;
   success: string | null = null;
+  schoolDrawerError: string | null = null;
   schoolForm = defaultSchoolForm();
   classForm = defaultClassForm();
   sectionForm = defaultSectionForm();
@@ -208,6 +209,11 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.error = err?.message || fallback;
   }
 
+  private closeDrawer() {
+    const appDrawer = typeof window !== "undefined" ? (window.Alpine?.store("appDrawer") as any) : null;
+    appDrawer?.close?.();
+  }
+
   private requireSchool() {
     if (!this.hasSchool) {
       this.error = this.schoolRequiredMessage;
@@ -227,6 +233,13 @@ export class SchoolFoundationStore extends AvBaseStore {
     };
   }
 
+  openSchoolDrawer() {
+    this.error = null;
+    this.success = null;
+    this.schoolDrawerError = null;
+    this.resetSchoolForm();
+  }
+
   async reload() {
     this.begin();
     try {
@@ -241,20 +254,30 @@ export class SchoolFoundationStore extends AvBaseStore {
   }
 
   async saveSchool() {
-    if (!this.schoolForm.name.trim() || !this.schoolForm.country.trim()) {
-      this.error = "School name and country are required.";
+    if (this.loading) return;
+    if (
+      !this.schoolForm.name.trim()
+      || !this.schoolForm.country.trim()
+      || !this.schoolForm.timezone.trim()
+      || !this.schoolForm.currency.trim()
+    ) {
+      this.schoolDrawerError = "School name, country, timezone, and currency are required.";
       return;
     }
 
     this.begin();
+    this.schoolDrawerError = null;
     try {
-      const result = await actions.schoolFoundation.upsertSchoolOrganization({ ...this.schoolForm });
-      const data = this.unwrap<{ school: SchoolOrganizationDTO }>(result);
-      this.school = data.school;
+      await actions.schoolFoundation.upsertSchoolOrganization({ ...this.schoolForm });
+      const workspaceResult = await actions.schoolFoundation.getFoundationWorkspace({});
+      this.applyState(this.unwrap<WorkspaceState>(workspaceResult));
       this.resetSchoolForm();
       this.success = "School organization saved.";
+      this.closeDrawer();
     } catch (err: any) {
-      this.fail(err, "Unable to save school organization.");
+      const message = err?.message || "Unable to save school organization.";
+      this.schoolDrawerError = message;
+      this.error = null;
     } finally {
       this.finish();
     }

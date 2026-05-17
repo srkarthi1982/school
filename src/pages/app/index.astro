@@ -2,6 +2,7 @@
 import { actions } from "astro:actions";
 import { AvButton, AvCard, AvContainer, AvInput, AvSelect } from "@ansiversa/components";
 import AppShell from "../../layouts/AppShell.astro";
+import SettingsDrawer from "../../components/drawers/SettingsDrawer.astro";
 import { APP_META } from "../../app.meta";
 
 const title = `${APP_META.name} App`;
@@ -70,29 +71,111 @@ const tabs = [
                 This record belongs to the logged-in Ansiversa owner. Other foundation data is
                 scoped to this school.
               </p>
-              <template x-if="$store.schoolFoundation.school">
-                <p class="av-text-soft">
-                  Current school:
-                  <strong x-text="$store.schoolFoundation.school?.name"></strong>
-                </p>
-              </template>
             </div>
 
-            <form class="av-auth-stack-sm" @submit.prevent="$store.schoolFoundation.saveSchool()">
-              <div class="school-foundation__form-grid">
-                <AvInput label="School name" name="school-name" x-model="$store.schoolFoundation.schoolForm.name" required />
-                <AvInput label="Slug" name="school-slug" x-model="$store.schoolFoundation.schoolForm.slug" hint="Optional. Generated from the name if blank." />
-                <AvInput label="Country" name="school-country" x-model="$store.schoolFoundation.schoolForm.country" required />
-                <AvInput label="Timezone" name="school-timezone" x-model="$store.schoolFoundation.schoolForm.timezone" required />
-                <AvInput label="Currency" name="school-currency" x-model="$store.schoolFoundation.schoolForm.currency" required />
-              </div>
+            <div class="av-auth-stack-sm">
+              <template x-if="!$store.schoolFoundation.school">
+                <div class="school-foundation__empty">
+                  No school organization exists yet. Create the school first to unlock foundation records.
+                </div>
+              </template>
+
+              <template x-if="$store.schoolFoundation.school">
+                <div class="school-foundation__summary-grid">
+                  <div class="school-foundation__summary-item">
+                    <span>School name</span>
+                    <strong x-text="$store.schoolFoundation.school?.name || '-'"></strong>
+                  </div>
+                  <div class="school-foundation__summary-item">
+                    <span>Slug</span>
+                    <strong x-text="$store.schoolFoundation.school?.slug || '-'"></strong>
+                  </div>
+                  <div class="school-foundation__summary-item">
+                    <span>Country</span>
+                    <strong x-text="$store.schoolFoundation.school?.country || '-'"></strong>
+                  </div>
+                  <div class="school-foundation__summary-item">
+                    <span>Timezone</span>
+                    <strong x-text="$store.schoolFoundation.school?.timezone || '-'"></strong>
+                  </div>
+                  <div class="school-foundation__summary-item">
+                    <span>Currency</span>
+                    <strong x-text="$store.schoolFoundation.school?.currency || '-'"></strong>
+                  </div>
+                </div>
+              </template>
+
               <div class="av-row-wrap">
-                <AvButton type="submit" :disabled="$store.schoolFoundation.loading">Save school</AvButton>
-                <AvButton type="button" variant="ghost" @click.prevent="$store.schoolFoundation.resetSchoolForm()">Reset</AvButton>
+                <AvButton
+                  type="button"
+                  @click.prevent="$store.schoolFoundation.openSchoolDrawer(); $store.appDrawer.open('settings')"
+                >
+                  <span x-text="$store.schoolFoundation.hasSchool ? 'Edit school' : 'Create school'"></span>
+                </AvButton>
               </div>
-            </form>
+            </div>
           </div>
         </AvCard>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'settings' && !$store.schoolFoundation.hasSchool">
+          <SettingsDrawer
+            title="Create school"
+            description="Create the owner-scoped school organization before adding foundation records."
+          >
+            <form id="school-organization-drawer-form-create" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveSchool()">
+              <AvInput label="School name" name="drawer-school-name-create" x-model="$store.schoolFoundation.schoolForm.name" required />
+              <AvInput label="Slug" name="drawer-school-slug-create" x-model="$store.schoolFoundation.schoolForm.slug" hint="Optional. Generated from the name if blank." />
+              <AvInput label="Country" name="drawer-school-country-create" x-model="$store.schoolFoundation.schoolForm.country" required />
+              <AvInput label="Timezone" name="drawer-school-timezone-create" x-model="$store.schoolFoundation.schoolForm.timezone" required />
+              <AvInput label="Currency" name="drawer-school-currency-create" x-model="$store.schoolFoundation.schoolForm.currency" required />
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.schoolDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.schoolDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton
+                type="submit"
+                form="school-organization-drawer-form-create"
+                :disabled="$store.schoolFoundation.loading"
+              >
+                <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save school'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
+
+        <template x-if="$store.appDrawer.activeDrawer === 'settings' && $store.schoolFoundation.hasSchool">
+          <SettingsDrawer
+            title="Edit school"
+            description="Update the owner-scoped school organization details."
+          >
+            <form id="school-organization-drawer-form-edit" class="av-auth-stack-md" @submit.prevent="$store.schoolFoundation.saveSchool()">
+              <AvInput label="School name" name="drawer-school-name-edit" x-model="$store.schoolFoundation.schoolForm.name" required />
+              <AvInput label="Slug" name="drawer-school-slug-edit" x-model="$store.schoolFoundation.schoolForm.slug" hint="Optional. Generated from the name if blank." />
+              <AvInput label="Country" name="drawer-school-country-edit" x-model="$store.schoolFoundation.schoolForm.country" required />
+              <AvInput label="Timezone" name="drawer-school-timezone-edit" x-model="$store.schoolFoundation.schoolForm.timezone" required />
+              <AvInput label="Currency" name="drawer-school-currency-edit" x-model="$store.schoolFoundation.schoolForm.currency" required />
+            </form>
+
+            <template slot="notice" x-if="$store.schoolFoundation.schoolDrawerError">
+              <p class="school-foundation__drawer-error" x-text="$store.schoolFoundation.schoolDrawerError"></p>
+            </template>
+
+            <div slot="actions" class="av-row-wrap av-drawer-footer-actions">
+              <AvButton type="button" variant="ghost" @click.prevent="$store.appDrawer.close()">Cancel</AvButton>
+              <AvButton
+                type="submit"
+                form="school-organization-drawer-form-edit"
+                :disabled="$store.schoolFoundation.loading"
+              >
+                <span x-text="$store.schoolFoundation.loading ? 'Saving...' : 'Save school'"></span>
+              </AvButton>
+            </div>
+          </SettingsDrawer>
+        </template>
 
         <AvCard variant="soft" className="school-foundation__workspace">
           <div class="school-foundation__tabs" role="tablist" aria-label="School foundation sections">
@@ -329,6 +412,31 @@ const tabs = [
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     }
 
+    .school-foundation__summary-grid {
+      display: grid;
+      gap: 0.65rem;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+
+    .school-foundation__summary-item {
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-radius: 8px;
+      display: grid;
+      gap: 0.2rem;
+      padding: 0.75rem;
+    }
+
+    .school-foundation__summary-item span {
+      color: rgba(203, 213, 225, 0.68);
+      font-size: 0.78rem;
+    }
+
+    .school-foundation__summary-item strong {
+      color: rgba(248, 250, 252, 0.96);
+      font-size: 0.95rem;
+      overflow-wrap: anywhere;
+    }
+
     .school-foundation__notice,
     .school-foundation__empty {
       border: 1px solid rgba(148, 163, 184, 0.18);
@@ -344,6 +452,11 @@ const tabs = [
     .school-foundation__notice--success {
       border-color: rgba(74, 222, 128, 0.35);
       color: rgb(187, 247, 208);
+    }
+
+    .school-foundation__drawer-error {
+      color: rgb(254, 202, 202);
+      margin: 0;
     }
 
     .school-foundation__workspace {
