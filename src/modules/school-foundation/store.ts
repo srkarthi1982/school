@@ -149,6 +149,8 @@ const defaultTeacherForm = (): TeacherForm => ({
   status: "active",
 });
 
+const toId = (value: unknown) => String(value ?? "");
+
 const emptyState = (): WorkspaceState => ({
   school: null,
   classes: [],
@@ -352,9 +354,11 @@ export class SchoolFoundationStore extends AvBaseStore {
     this.resetFoundationEditState();
     this.foundationFormMode = "edit";
     this.editingStudentId = item.id;
+    const classId = toId(item.classId);
+    const sectionId = toId(item.sectionId);
     this.studentForm = {
-      classId: item.classId ?? "",
-      sectionId: item.sectionId ?? "",
+      classId,
+      sectionId: "",
       admissionNumber: item.admissionNumber ?? "",
       rollNumber: item.rollNumber ?? "",
       fullName: item.fullName ?? "",
@@ -364,6 +368,12 @@ export class SchoolFoundationStore extends AvBaseStore {
       guardianPhone: item.guardianPhone ?? "",
       status: (item.status as RecordStatus) || "active",
     };
+    queueMicrotask(() => {
+      if (this.editingStudentId !== item.id) return;
+      this.studentForm.sectionId = this.sectionsForClass(classId).some((section) => toId(section.id) === sectionId)
+        ? sectionId
+        : "";
+    });
   }
 
   openTeacherDrawer() {
@@ -465,8 +475,9 @@ export class SchoolFoundationStore extends AvBaseStore {
   }
 
   setStudentClass(classId: string) {
-    this.studentForm.classId = classId;
-    if (!this.sectionsForClass(classId).some((section) => section.id === this.studentForm.sectionId)) {
+    const nextClassId = toId(classId);
+    this.studentForm.classId = nextClassId;
+    if (!this.sectionsForClass(nextClassId).some((section) => toId(section.id) === this.studentForm.sectionId)) {
       this.studentForm.sectionId = "";
     }
   }
