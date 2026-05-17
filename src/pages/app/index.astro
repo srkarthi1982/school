@@ -27,6 +27,7 @@ const tabs = [
   { key: "subjects", label: "Subjects" },
   { key: "students", label: "Students" },
   { key: "teachers", label: "Teachers" },
+  { key: "attendance", label: "Attendance" },
 ];
 ---
 
@@ -650,6 +651,212 @@ const tabs = [
               </section>
             </div>
           </div>
+
+          <div class="school-foundation__tab-panel" x-show="$store.schoolFoundation.hasSchool && $store.schoolFoundation.activeTab === 'attendance'" x-cloak>
+            <div class="school-foundation__stack">
+              <section class="school-foundation__section-card school-foundation__section-card--header">
+                <div class="school-foundation__attendance-header">
+                  <div class="school-foundation__section-copy">
+                    <h2 class="av-card-heading">Daily Attendance</h2>
+                    <p class="av-text-soft">
+                      Mark daily student attendance. Present students are implied; only absences,
+                      late arrivals, and excused cases are stored.
+                    </p>
+                  </div>
+
+                  <div class="school-foundation__attendance-summary">
+                    <div>
+                      <span>Present</span>
+                      <strong x-text="$store.schoolFoundation.attendanceSummary.present"></strong>
+                    </div>
+                    <div>
+                      <span>Absent</span>
+                      <strong x-text="$store.schoolFoundation.attendanceSummary.absent"></strong>
+                    </div>
+                    <div>
+                      <span>Late</span>
+                      <strong x-text="$store.schoolFoundation.attendanceSummary.late"></strong>
+                    </div>
+                    <div>
+                      <span>Excused</span>
+                      <strong x-text="$store.schoolFoundation.attendanceSummary.excused"></strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="school-foundation__attendance-filters">
+                  <label class="av-field">
+                    <span class="av-field__label">Date</span>
+                    <input
+                      class="av-input"
+                      type="date"
+                      x-model="$store.schoolFoundation.attendanceDate"
+                      @change="$store.schoolFoundation.setAttendanceDate($event.target.value)"
+                    />
+                  </label>
+
+                  <label class="av-field">
+                    <span class="av-field__label">Class</span>
+                    <select
+                      class="av-input"
+                      x-model="$store.schoolFoundation.attendanceClassId"
+                      x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.attendanceClassId })"
+                      @change="$store.schoolFoundation.setAttendanceClass($event.target.value)"
+                    >
+                      <option value="">Select class</option>
+                      <template x-for="item in $store.schoolFoundation.classes" :key="item.id">
+                        <option :value="String(item.id)" x-text="item.name"></option>
+                      </template>
+                    </select>
+                  </label>
+
+                  <label class="av-field">
+                    <span class="av-field__label">Section</span>
+                    <select
+                      class="av-input"
+                      x-model="$store.schoolFoundation.attendanceSectionId"
+                      x-effect="$nextTick(() => { $el.value = $store.schoolFoundation.attendanceSectionId })"
+                      @change="$store.schoolFoundation.setAttendanceSection($event.target.value)"
+                    >
+                      <option value="">Select section</option>
+                      <template x-for="item in $store.schoolFoundation.attendanceSectionsForClass()" :key="item.id">
+                        <option :value="String(item.id)" x-text="item.name"></option>
+                      </template>
+                    </select>
+                  </label>
+
+                  <AvButton
+                    type="button"
+                    :disabled="!$store.schoolFoundation.attendanceReady || $store.schoolFoundation.attendanceLoading"
+                    @click.prevent="$store.schoolFoundation.loadDailyAttendance()"
+                  >
+                    <span x-text="$store.schoolFoundation.attendanceLoading ? 'Loading...' : 'Load'"></span>
+                  </AvButton>
+                </div>
+              </section>
+
+              <template x-if="$store.schoolFoundation.attendanceError">
+                <div class="school-foundation__notice school-foundation__notice--error" x-text="$store.schoolFoundation.attendanceError"></div>
+              </template>
+              <template x-if="$store.schoolFoundation.attendanceSuccess">
+                <div class="school-foundation__notice school-foundation__notice--success" x-text="$store.schoolFoundation.attendanceSuccess"></div>
+              </template>
+
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__attendance-toolbar">
+                  <div class="school-foundation__section-copy">
+                    <h3 class="av-card-heading">Virtual classroom</h3>
+                    <p class="av-text-soft">
+                      <span x-text="$store.schoolFoundation.getClassName($store.schoolFoundation.attendanceClassId)"></span>
+                      <span x-show="$store.schoolFoundation.attendanceSectionId"> / </span>
+                      <span x-text="$store.schoolFoundation.getSectionName($store.schoolFoundation.attendanceSectionId)"></span>
+                    </p>
+                  </div>
+                  <AvButton
+                    type="button"
+                    :disabled="!$store.schoolFoundation.attendanceLoaded || $store.schoolFoundation.attendanceStudents.length === 0 || $store.schoolFoundation.attendanceSaving"
+                    @click.prevent="$store.schoolFoundation.saveDailyAttendance()"
+                  >
+                    <span x-text="$store.schoolFoundation.attendanceSaving ? 'Saving...' : 'Save attendance'"></span>
+                  </AvButton>
+                </div>
+
+                <template x-if="$store.schoolFoundation.attendanceEmptyMessage">
+                  <div class="school-foundation__empty" x-text="$store.schoolFoundation.attendanceEmptyMessage"></div>
+                </template>
+
+                <template x-if="$store.schoolFoundation.attendanceStudents.length > 0">
+                  <div class="school-foundation__attendance-grid">
+                    <template x-for="student in $store.schoolFoundation.attendanceStudents" :key="student.id">
+                      <article
+                        class="school-foundation__attendance-student"
+                        :class="$store.schoolFoundation.attendanceStatusClass(student.attendanceStatus)"
+                      >
+                        <div class="school-foundation__row-title">
+                          <div>
+                            <strong x-text="student.fullName"></strong>
+                            <p class="av-text-soft">
+                              <span x-text="student.rollNumber || student.admissionNumber || '-'"></span>
+                            </p>
+                          </div>
+                          <span class="school-foundation__attendance-badge" x-text="student.attendanceStatus"></span>
+                        </div>
+
+                        <div class="school-foundation__attendance-statuses" role="group" aria-label="Attendance status">
+                          <button
+                            type="button"
+                            class="school-foundation__attendance-status"
+                            :class="student.attendanceStatus === 'present' ? 'school-foundation__attendance-status--active' : ''"
+                            @click.prevent="$store.schoolFoundation.setAttendanceStatus(student.id, 'present')"
+                          >
+                            Present
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__attendance-status"
+                            :class="student.attendanceStatus === 'absent' ? 'school-foundation__attendance-status--active' : ''"
+                            @click.prevent="$store.schoolFoundation.setAttendanceStatus(student.id, 'absent')"
+                          >
+                            Absent
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__attendance-status"
+                            :class="student.attendanceStatus === 'late' ? 'school-foundation__attendance-status--active' : ''"
+                            @click.prevent="$store.schoolFoundation.setAttendanceStatus(student.id, 'late')"
+                          >
+                            Late
+                          </button>
+                          <button
+                            type="button"
+                            class="school-foundation__attendance-status"
+                            :class="student.attendanceStatus === 'excused' ? 'school-foundation__attendance-status--active' : ''"
+                            @click.prevent="$store.schoolFoundation.setAttendanceStatus(student.id, 'excused')"
+                          >
+                            Excused
+                          </button>
+                        </div>
+                      </article>
+                    </template>
+                  </div>
+                </template>
+              </section>
+
+              <section class="school-foundation__section-card school-foundation__section-card--list">
+                <div class="school-foundation__attendance-toolbar">
+                  <div class="school-foundation__section-copy">
+                    <h3 class="av-card-heading">Recent attendance</h3>
+                    <p class="av-text-soft">Recent exception-only attendance sessions.</p>
+                  </div>
+                </div>
+
+                <template x-if="$store.schoolFoundation.attendanceRecent.length === 0">
+                  <p class="av-text-soft">No recent attendance sessions yet.</p>
+                </template>
+
+                <template x-if="$store.schoolFoundation.attendanceRecent.length > 0">
+                  <div class="school-foundation__recent-attendance">
+                    <template x-for="session in $store.schoolFoundation.attendanceRecent" :key="`${session.attendanceDate}-${session.classId}-${session.sectionId}`">
+                      <article class="school-foundation__recent-attendance-row">
+                        <div>
+                          <strong x-text="session.attendanceDate"></strong>
+                          <p class="av-text-soft">
+                            <span x-text="session.className"></span>
+                            /
+                            <span x-text="session.sectionName"></span>
+                          </p>
+                        </div>
+                        <span>
+                          <span x-text="session.exceptionCount"></span>
+                          exceptions
+                        </span>
+                      </article>
+                    </template>
+                  </div>
+                </template>
+              </section>
+            </div>
+          </div>
         </AvCard>
 
         <div x-on:av-confirm.window="if ($event.detail?.id === 'school-foundation-delete-dialog') $store.schoolFoundation.confirmDelete()">
@@ -856,6 +1063,124 @@ const tabs = [
       color: rgb(254, 202, 202);
     }
 
+    .school-foundation__attendance-header,
+    .school-foundation__attendance-toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      justify-content: space-between;
+    }
+
+    .school-foundation__attendance-summary,
+    .school-foundation__attendance-filters {
+      display: grid;
+      gap: 0.65rem;
+      grid-template-columns: 1fr;
+    }
+
+    .school-foundation__attendance-summary div {
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-radius: 8px;
+      min-width: 6rem;
+      padding: 0.65rem 0.75rem;
+    }
+
+    .school-foundation__attendance-summary span {
+      color: rgba(203, 213, 225, 0.68);
+      display: block;
+      font-size: 0.74rem;
+      margin-bottom: 0.15rem;
+    }
+
+    .school-foundation__attendance-summary strong {
+      color: rgba(248, 250, 252, 0.96);
+      font-size: 1.05rem;
+    }
+
+    .school-foundation__attendance-filters {
+      align-items: end;
+      margin-top: 1rem;
+    }
+
+    .school-foundation__attendance-grid {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: 1fr;
+      margin-top: 1rem;
+    }
+
+    .school-foundation__attendance-student {
+      background: rgba(15, 23, 42, 0.3);
+      border: 1px solid rgba(34, 197, 94, 0.22);
+      border-radius: 8px;
+      display: grid;
+      gap: 0.85rem;
+      padding: 0.85rem;
+    }
+
+    .school-foundation__attendance-student--absent {
+      border-color: rgba(248, 113, 113, 0.36);
+    }
+
+    .school-foundation__attendance-student--late {
+      border-color: rgba(251, 191, 36, 0.36);
+    }
+
+    .school-foundation__attendance-student--excused {
+      border-color: rgba(96, 165, 250, 0.36);
+    }
+
+    .school-foundation__attendance-badge {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 999px;
+      color: rgba(226, 232, 240, 0.78);
+      font-size: 0.72rem;
+      padding: 0.18rem 0.5rem;
+      text-transform: capitalize;
+    }
+
+    .school-foundation__attendance-statuses {
+      display: grid;
+      gap: 0.45rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .school-foundation__attendance-status {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 8px;
+      color: rgba(226, 232, 240, 0.78);
+      font-size: 0.78rem;
+      padding: 0.45rem 0.35rem;
+      text-align: center;
+    }
+
+    .school-foundation__attendance-status--active {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.35);
+      color: rgba(240, 253, 244, 0.98);
+    }
+
+    .school-foundation__recent-attendance {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .school-foundation__recent-attendance-row {
+      align-items: center;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-radius: 8px;
+      display: flex;
+      gap: 1rem;
+      justify-content: space-between;
+      padding: 0.75rem;
+    }
+
+    .school-foundation__recent-attendance-row > span {
+      color: rgba(226, 232, 240, 0.78);
+      font-size: 0.84rem;
+      white-space: nowrap;
+    }
+
     @media (min-width: 900px) {
       .school-foundation__header,
       .school-foundation__card-grid {
@@ -868,6 +1193,24 @@ const tabs = [
       }
 
       .school-foundation__list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .school-foundation__attendance-header,
+      .school-foundation__attendance-toolbar {
+        align-items: start;
+        flex-direction: row;
+      }
+
+      .school-foundation__attendance-summary {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .school-foundation__attendance-filters {
+        grid-template-columns: 1fr 1fr 1fr auto;
+      }
+
+      .school-foundation__attendance-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }

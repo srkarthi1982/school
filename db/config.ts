@@ -1,6 +1,7 @@
 import { defineDb } from "astro:db";
 import {
   AcademicYears,
+  DailyAttendanceExceptions,
   SchoolClasses,
   SchoolOrganizations,
   SchoolSections,
@@ -18,5 +19,6 @@ export default defineDb({
     Subjects,
     Students,
     Teachers,
+    DailyAttendanceExceptions,
   },
 });

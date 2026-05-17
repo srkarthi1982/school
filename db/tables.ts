@@ -150,6 +150,32 @@ export const Teachers = defineTable({
   ],
 });
 
+export const DailyAttendanceExceptions = defineTable({
+  columns: {
+    id: column.text({ primaryKey: true }),
+    schoolId: column.text({ references: () => SchoolOrganizations.columns.id }),
+    classId: column.text({ references: () => SchoolClasses.columns.id }),
+    sectionId: column.text({ references: () => SchoolSections.columns.id }),
+    studentId: column.text({ references: () => Students.columns.id }),
+    attendanceDate: column.text(),
+    status: column.text(),
+    remarks: column.text(),
+    createdAt: column.date({ default: NOW }),
+    updatedAt: column.date({ default: NOW }),
+  },
+  indexes: [
+    {
+      name: "daily_attendance_school_date_idx",
+      on: ["schoolId", "attendanceDate"],
+    },
+    {
+      name: "daily_attendance_unique_student_date_idx",
+      on: ["schoolId", "studentId", "attendanceDate"],
+      unique: true,
+    },
+  ],
+});
+
 export const schoolTables = {
   SchoolOrganizations,
   AcademicYears,
@@ -158,4 +184,5 @@ export const schoolTables = {
   Subjects,
   Students,
   Teachers,
+  DailyAttendanceExceptions,
 } as const;

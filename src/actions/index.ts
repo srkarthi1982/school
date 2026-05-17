@@ -23,6 +23,12 @@ import {
   updateTeacher,
   upsertSchoolOrganization,
 } from "./schoolFoundation";
+import {
+  getDailyAttendanceGrid,
+  getDailyAttendanceSummary,
+  listRecentDailyAttendanceSessions,
+  saveDailyAttendance,
+} from "./schoolAttendance";
 
 export const schoolFoundation = {
   getSchoolOrganization,
@@ -50,6 +56,14 @@ export const schoolFoundation = {
   getFoundationWorkspace,
 };
 
+export const schoolAttendance = {
+  getDailyAttendanceGrid,
+  saveDailyAttendance,
+  listRecentDailyAttendanceSessions,
+  getDailyAttendanceSummary,
+};
+
 export const server = {
   schoolFoundation,
+  schoolAttendance,
 };

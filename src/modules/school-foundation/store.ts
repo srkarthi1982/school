@@ -71,6 +71,7 @@ type StudentGender = "female" | "male" | "other" | "unspecified";
 type RecordStatus = "active" | "inactive";
 type FoundationRecordType = "class" | "section" | "subject" | "student" | "teacher";
 type FoundationFormMode = "create" | "edit";
+type AttendanceStatus = "present" | "absent" | "late" | "excused";
 
 type StudentForm = {
   classId: string;
@@ -101,6 +102,29 @@ type WorkspaceState = {
   subjects: SubjectDTO[];
   students: StudentDTO[];
   teachers: TeacherDTO[];
+};
+
+type AttendanceStudentDTO = StudentDTO & {
+  attendanceStatus: AttendanceStatus;
+  attendanceRemarks: string;
+  exceptionId?: string | null;
+};
+
+type AttendanceSummary = {
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  exceptions: number;
+};
+
+type AttendanceSessionDTO = {
+  attendanceDate: string;
+  classId: string;
+  sectionId: string;
+  className: string;
+  sectionName: string;
+  exceptionCount: number;
 };
 
 const defaultSchoolForm = () => ({
@@ -151,6 +175,22 @@ const defaultTeacherForm = (): TeacherForm => ({
 
 const toId = (value: unknown) => String(value ?? "");
 
+const todayKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const defaultAttendanceSummary = (): AttendanceSummary => ({
+  present: 0,
+  absent: 0,
+  late: 0,
+  excused: 0,
+  exceptions: 0,
+});
+
 const emptyState = (): WorkspaceState => ({
   school: null,
   classes: [],
@@ -186,10 +226,25 @@ export class SchoolFoundationStore extends AvBaseStore {
   subjectForm = defaultSubjectForm();
   studentForm = defaultStudentForm();
   teacherForm = defaultTeacherForm();
+  attendanceDate = todayKey();
+  attendanceClassId = "";
+  attendanceSectionId = "";
+  attendanceStudents: AttendanceStudentDTO[] = [];
+  attendanceSummary: AttendanceSummary = defaultAttendanceSummary();
+  attendanceRecent: AttendanceSessionDTO[] = [];
+  attendanceLoaded = false;
+  attendanceLoading = false;
+  attendanceSaving = false;
+  attendanceError: string | null = null;
+  attendanceSuccess: string | null = null;
 
   init(initial?: Partial<WorkspaceState>) {
     this.applyState({ ...emptyState(), ...(initial ?? {}) });
     this.resetSchoolForm();
+    if (this.hasSchool) {
+      void this.loadRecentAttendance();
+      void this.loadAttendanceSummary();
+    }
   }
 
   get hasSchool() {
@@ -692,6 +747,147 @@ export class SchoolFoundationStore extends AvBaseStore {
 
   sectionsForClass(classId: string) {
     return this.sections.filter((section) => section.classId === classId);
+  }
+
+  get attendanceReady() {
+    return Boolean(this.hasSchool && this.attendanceDate && this.attendanceClassId && this.attendanceSectionId);
+  }
+
+  get attendanceEmptyMessage() {
+    if (!this.hasSchool) return "Create the school organization before taking attendance.";
+    if (!this.attendanceClassId || !this.attendanceSectionId || !this.attendanceDate) {
+      return "Select date, class, and section to load daily attendance.";
+    }
+    if (this.attendanceLoaded && this.attendanceStudents.length === 0) {
+      return "No active students exist in the selected section.";
+    }
+    return "";
+  }
+
+  attendanceSectionsForClass() {
+    return this.sectionsForClass(this.attendanceClassId);
+  }
+
+  setAttendanceClass(classId: string) {
+    const nextClassId = toId(classId);
+    this.attendanceClassId = nextClassId;
+    if (!this.sectionsForClass(nextClassId).some((section) => toId(section.id) === this.attendanceSectionId)) {
+      this.attendanceSectionId = "";
+      this.resetAttendanceGrid();
+      return;
+    }
+    void this.loadDailyAttendance();
+  }
+
+  setAttendanceSection(sectionId: string) {
+    this.attendanceSectionId = toId(sectionId);
+    void this.loadDailyAttendance();
+  }
+
+  setAttendanceDate(date: string) {
+    this.attendanceDate = date;
+    void this.loadDailyAttendance();
+    void this.loadAttendanceSummary();
+  }
+
+  resetAttendanceGrid() {
+    this.attendanceStudents = [];
+    this.attendanceSummary = defaultAttendanceSummary();
+    this.attendanceLoaded = false;
+    this.attendanceError = null;
+    this.attendanceSuccess = null;
+  }
+
+  async loadDailyAttendance() {
+    if (!this.attendanceReady || this.attendanceLoading) return;
+    this.attendanceLoading = true;
+    this.attendanceError = null;
+    this.attendanceSuccess = null;
+    try {
+      const result = await actions.schoolAttendance.getDailyAttendanceGrid({
+        classId: this.attendanceClassId,
+        sectionId: this.attendanceSectionId,
+        attendanceDate: this.attendanceDate,
+      });
+      const data = this.unwrap<{ students: AttendanceStudentDTO[]; summary: AttendanceSummary }>(result);
+      this.attendanceStudents = data.students ?? [];
+      this.attendanceSummary = data.summary ?? defaultAttendanceSummary();
+      this.attendanceLoaded = true;
+    } catch (err: any) {
+      this.attendanceError = err?.message || "Unable to load daily attendance.";
+      this.attendanceLoaded = false;
+    } finally {
+      this.attendanceLoading = false;
+    }
+  }
+
+  async loadRecentAttendance() {
+    if (!this.hasSchool) return;
+    try {
+      const result = await actions.schoolAttendance.listRecentDailyAttendanceSessions({});
+      const data = this.unwrap<{ sessions: AttendanceSessionDTO[] }>(result);
+      this.attendanceRecent = data.sessions ?? [];
+    } catch {
+      this.attendanceRecent = [];
+    }
+  }
+
+  async loadAttendanceSummary() {
+    if (!this.hasSchool || !this.attendanceDate) return;
+    try {
+      const result = await actions.schoolAttendance.getDailyAttendanceSummary({
+        attendanceDate: this.attendanceDate,
+      });
+      const data = this.unwrap<{ summary: AttendanceSummary }>(result);
+      if (!this.attendanceLoaded) {
+        this.attendanceSummary = data.summary ?? defaultAttendanceSummary();
+      }
+    } catch {
+      if (!this.attendanceLoaded) {
+        this.attendanceSummary = defaultAttendanceSummary();
+      }
+    }
+  }
+
+  setAttendanceStatus(studentId: string, status: AttendanceStatus) {
+    this.attendanceStudents = this.attendanceStudents.map((student) => (
+      student.id === studentId ? { ...student, attendanceStatus: status } : student
+    ));
+  }
+
+  attendanceStatusClass(status: AttendanceStatus) {
+    return `school-foundation__attendance-student--${status}`;
+  }
+
+  async saveDailyAttendance() {
+    if (this.attendanceSaving || !this.attendanceReady) return;
+    this.attendanceSaving = true;
+    this.attendanceError = null;
+    this.attendanceSuccess = null;
+    try {
+      const attendance = Object.fromEntries(
+        this.attendanceStudents.map((student) => [
+          student.id,
+          {
+            status: student.attendanceStatus,
+            remarks: student.attendanceRemarks ?? "",
+          },
+        ]),
+      );
+      await actions.schoolAttendance.saveDailyAttendance({
+        classId: this.attendanceClassId,
+        sectionId: this.attendanceSectionId,
+        attendanceDate: this.attendanceDate,
+        attendance,
+      });
+      await this.loadDailyAttendance();
+      await this.loadRecentAttendance();
+      this.attendanceSuccess = "Attendance saved.";
+    } catch (err: any) {
+      this.attendanceError = err?.message || "Unable to save attendance.";
+    } finally {
+      this.attendanceSaving = false;
+    }
   }
 }
 

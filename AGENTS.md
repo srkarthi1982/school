@@ -27,7 +27,7 @@ This repo contains the School Ansiversa mini-app.
 
 ## 2. Current Scope
 
-School currently includes DB Foundation V1 only.
+School currently includes DB Foundation V1 and Daily Attendance V1 only.
 
 Allowed V1 foundation records:
 
@@ -38,10 +38,12 @@ Allowed V1 foundation records:
 - Subjects
 - Students
 - Teachers
+- Daily student attendance using exception-only storage (`DailyAttendanceExceptions`)
 
 Do not add full school modules without approval:
 
-- Attendance
+- Class/period attendance
+- Timetable
 - Fees
 - Exams
 - Report cards
@@ -62,13 +64,15 @@ Do not add full school modules without approval:
 
 - Remote DB URL: `libsql://school-ansiversa.aws-ap-south-1.turso.io`.
 - Secrets must stay in local/uncommitted env files or deployment environment variables.
-- `db/config.ts` defines School DB Foundation V1 tables only.
+- `db/config.ts` defines School DB Foundation V1 and Daily Attendance V1 tables only.
 - Every school-owned table is scoped by `schoolId`.
 - Owner-level access must resolve `SchoolOrganizations.ownerUserId` first.
 
 ---
 
 ## 4. Task Log (Recent)
+
+- 2026-05-17 Implemented Daily Attendance V1 with exception-only storage: added `DailyAttendanceExceptions`, owner/school-scoped attendance actions, Attendance tab with stacked filters, virtual classroom marking grid, recent sessions, summary counts, and present-as-implied behavior. Updated `docs/app-spec.md`; verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints), `npm run build` passed, and `npm run db:push` applied the remote schema.
 
 - 2026-05-17 Added `x-cloak` to School Foundation tab panels so hard refresh no longer flashes all tab contents before Alpine initializes. Verification: `npm run typecheck` passed (0 errors, 5 existing redirect-page hints) and `npm run build` passed.
 
