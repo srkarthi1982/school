@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed quizzes, surveys, and forms with sample data for local development.
+r"""Seed quizzes, surveys, and forms with sample data for local development.
 
 Creates:
 - 1 Quiz (T/F + essay + MC questions) from the question bank, linked via quiz_questions
@@ -53,8 +53,13 @@ def _ensure_backend_venv() -> None:
 
 _ensure_backend_venv()
 
+# Initialize modules in the same order as the application. Importing model
+# packages directly can otherwise trigger their routers in a circular order.
+import app.main  # noqa: F401
+
 from app.core.database import SessionLocal
 from app.modules import import_all_models
+from app.modules.users.models import User
 from app.modules.quiz_bank.models import Question as QuizQuestionModel, Quiz, QuizQuestion, QuizAttempt
 from app.modules.survey.models import (
     StudentResponse as SurveyStudentResponse,
@@ -239,6 +244,20 @@ FORM_QUESTIONS = [
 # ─────────────────────────────────────────────────────────
 
 
+def _sample_student_ids(db: Session) -> tuple[int, int]:
+    users = {
+        user.username: user.id
+        for user in db.query(User).filter(User.username.in_(("student", "student1"))).all()
+    }
+    missing = {"student", "student1"} - users.keys()
+    if missing:
+        raise ValueError(
+            "Missing sample users: "
+            f"{', '.join(sorted(missing))}. Run seed_default_users.py first."
+        )
+    return users["student"], users["student1"]
+
+
 def seed_quiz(db: Session) -> None:
     existing = db.query(Quiz).filter(Quiz.name == QUIZ_NAME).first()
     if existing:
@@ -275,7 +294,7 @@ def seed_quiz(db: Session) -> None:
         )
         db.add(quiz_question)
 
-    student_id = 101
+    student_id, _ = _sample_student_ids(db)
     essay_question_ids = [
         qq.question_id
         for qq in db.query(QuizQuestion).filter(
@@ -412,9 +431,10 @@ def seed_survey(db: Session) -> None:
             student1_answers[str(sq.id)] = "Detailed feedback"
             student2_answers[str(sq.id)] = "Needs improvement"
 
+    student1_id, student2_id = _sample_student_ids(db)
     for student_id, answers in [
-        (101, student1_answers),
-        (105, student2_answers),
+        (student1_id, student1_answers),
+        (student2_id, student2_answers),
     ]:
         resp = SurveyStudentResponse(
             survey=survey,
@@ -506,9 +526,10 @@ def seed_form(db: Session) -> None:
             student1_answers[str(fq.id)] = "No additional support needed"
             student2_answers[str(fq.id)] = "Additional tutoring in mathematics"
 
+    student1_id, student2_id = _sample_student_ids(db)
     for student_id, answers in [
-        (101, student1_answers),
-        (105, student2_answers),
+        (student1_id, student1_answers),
+        (student2_id, student2_answers),
     ]:
         resp = FormStudentResponse(
             form=form,
@@ -540,6 +561,10 @@ def main() -> None:
         seed_quiz(db)
         seed_survey(db)
         seed_form(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
