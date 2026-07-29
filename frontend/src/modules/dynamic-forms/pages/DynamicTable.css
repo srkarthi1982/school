@@ -1,0 +1,225 @@
+/* ── Table mechanics only — layout/buttons handled by design system ─────── */
+
+.table-scroll-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  width: 100%;
+  position: relative;
+}
+
+.table-resize-handle {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.08));
+  border-left: 1px solid var(--border);
+  z-index: 200;
+  pointer-events: auto;
+}
+
+.table-resize-handle:hover {
+  background: linear-gradient(to right, transparent, rgba(45, 212, 191, 0.25));
+  border-left-color: var(--accent);
+}
+
+.dynamic-table {
+  border-collapse: collapse;
+  background-color: var(--surface);
+  table-layout: fixed;
+}
+
+.dynamic-table th,
+.dynamic-table td {
+  border: 1px solid var(--border);
+  min-width: 120px;
+  overflow: hidden;
+}
+
+.dynamic-table th {
+  background-color: var(--surface-2);
+  padding: 0;
+  position: relative;
+  vertical-align: middle;
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background-color: transparent;
+  z-index: 10;
+}
+
+.resize-handle:hover {
+  background-color: rgba(45, 212, 191, 0.3);
+}
+
+.row-resize-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 6px;
+  cursor: row-resize;
+  z-index: 5;
+}
+
+.row-resize-handle:hover {
+  background-color: rgba(45, 212, 191, 0.3);
+}
+
+td.data-cell {
+  position: relative;
+  padding: 0;
+  vertical-align: top;
+  background-color: var(--surface);
+}
+
+td.header-cell {
+  background-color: var(--surface-2);
+  font-weight: 600;
+  text-align: center;
+}
+
+.header-cell-wrapper {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  position: relative;
+  min-height: 100%;
+  padding-right: 0;
+  box-sizing: border-box;
+  background-color: var(--surface-2);
+}
+
+.header-cell-wrapper:hover {
+  background-color: var(--surface-hover, var(--surface-2));
+  opacity: 0.9;
+}
+
+.header-cell-wrapper .cell {
+  width: 100%;
+  min-height: 100%;
+  padding: 0;
+}
+
+.header-cell-wrapper .cell-input {
+  width: 100%;
+  min-height: 100%;
+  height: calc(100% - 2px);
+  margin: 1px 0;
+}
+
+.cell {
+  position: relative;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.cell-input {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 8px 12px;
+  border: 2px solid transparent;
+  outline: none;
+  font-size: 13px;
+  font-family: var(--font);
+  background-color: transparent;
+  color: var(--text-primary);
+  cursor: text;
+  resize: vertical;
+  overflow-y: auto;
+}
+
+.cell-input:hover {
+  background-color: rgba(45, 212, 191, 0.06);
+}
+
+.cell-input:focus {
+  border-color: var(--accent);
+  background-color: transparent;
+}
+
+td.data-cell textarea.cell-input {
+  width: calc(100% - 8px);
+  margin: 4px;
+  min-height: 40px;
+  border-radius: 6px;
+}
+
+td.data-cell textarea.cell-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+td.data-cell textarea.cell-input:hover {
+  background-color: rgba(45, 212, 191, 0.06);
+}
+
+/* ── Merge mode styles ──────────────────────────────────────────────────── */
+
+.merge-start {
+  background-color: var(--accent) !important;
+}
+
+.merge-start .cell-input {
+  color: white;
+  cursor: text !important;
+}
+
+.merge-start .cell-input::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cell.active {
+  background-color: rgba(45, 212, 191, 0.12) !important;
+}
+
+.cell.active .cell-input {
+  color: var(--accent) !important;
+}
+
+.cell-input.merged-input {
+  cursor: text !important;
+  opacity: 0.9;
+}
+
+.cell[data-merged="true"] .cell-input {
+  cursor: text !important;
+}
+
+.cell-input.merged-input::selection {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.merge-target {
+  cursor: pointer;
+  background-color: rgba(45, 212, 191, 0.08);
+  border: 2px dashed var(--accent) !important;
+}
+
+.merge-preview {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: var(--accent);
+  color: white;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.file-input {
+  display: none;
+}

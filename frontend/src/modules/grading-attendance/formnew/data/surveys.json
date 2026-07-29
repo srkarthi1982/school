@@ -1,0 +1,115 @@
+{
+    "surveys":[
+        {
+            "id":1,
+            "title":"React course feedback - Q1 2026",
+            "description":"End of quarter feedback for React Fundamentals course",
+            "status":"published",
+            "createdAt":"2026-05-10T10:30:00Z",
+            "questions":[
+                {
+                    "id":1,
+                    "text":"How satisfied are you with React hooks coverage?",
+                    "type":"rating",
+                    "options":[
+                        {"id":"1","text":"Very Disaticsfied"},
+                        {"id":"5","text":"Very saticsfied"}
+                    ],
+                    "weight":25
+                },
+                 {
+                    "id":2,
+                    "text":"What should we cover next?",
+                    "type":"multiple",
+                    "options":[
+                        {"id":"a","text":"State management"},
+                        {"id":"b","text":"Optimization"},
+                        {"id":"c","text":"Server components"}
+                    ],
+                    "weight":15
+                }
+            ]
+        },
+        {
+            "id":2,
+            "title":"Team saticsfaction survey -draft",
+            "description":"Internal team happines check (not published yet)",
+            "status":"draft",
+            "createdAt":"2026-05-10T04:30:00Z",
+            "questions":[
+                {
+                    "id":1,
+                    "text":"I feel valued in my role",
+                    "type":"rating",
+                    "options":[
+                        {"id":"11","text":"Not at all"},
+                        {"id":"12","text":"Completely"}
+                    ],
+                    "weight":30
+                } 
+            ]
+        },
+        {
+            "id":3,
+            "title":"Product Nps Survey",
+            "description":"Net promoter score for our latest saas release",
+            "status":"published",
+            "createdAt":"2026-05-10T04:30:00Z",
+            "questions":[
+                {
+                    "id":1,
+                    "text":"How likely are you to recommend our product?(0-10)",
+                    "type":"rating",
+                    "options":[
+                        {"id":"0","text":"Not likely"},
+                        {"id":"10","text":"Extreamly"}
+                    ],
+                    "weight":50
+                } 
+            ]
+        },
+         {
+            "id":4,
+            "title":"Onboarding feedback",
+            "description":"New employee 30 day check-in survey",
+            "status":"draft",
+            "createdAt":"2026-05-10T04:30:00Z",
+            "questions":[]
+        },
+         {
+            "id":5,
+            "title":"Onboarding feedback 5",
+            "description":"New employee 30 day check-in survey",
+            "status":"draft",
+            "createdAt":"2026-05-10T04:30:00Z",
+            "questions":[]
+        },
+         {
+            "id":6,
+            "title":"Onboarding feedback 6",
+            "description":"New employee 30 day check-in survey",
+            "status":"draft",
+            "createdAt":"2026-05-10T04:30:00Z",
+            "questions":[]
+        },
+         {
+            "id":7,
+            "title":"Onboarding feedback 7",
+            "description":"New employee 30 day check-in survey",
+            "status":"draft",
+            "createdAt":"2026-05-10T04:30:00Z",
+            "questions":[]
+        }
+    ],
+    "responses":[
+        {
+            "surveyId":"1",
+            "studentId":"student-001",
+            "answers":{
+                "q1":4,
+                "q2":["a","c"]
+            },
+            "completedAt":"2026-05-11T16:20:00Z"
+        }
+    ]
+}

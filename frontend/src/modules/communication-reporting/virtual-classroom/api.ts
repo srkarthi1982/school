@@ -1,0 +1,22 @@
+// Short aliases for the auto-generated hey-api functions for /class-sessions/.
+// Long generated names exist for OpenAPI uniqueness; use these in stores/pages.
+export {
+  listClassSessionsApiV1ClassSessionsGet as listClassSessions,
+  getClassSessionApiV1ClassSessionsSessionIdGet as getClassSession,
+  createClassSessionApiV1ClassSessionsPost as createClassSessionApi,
+  updateClassSessionApiV1ClassSessionsSessionIdPut as updateClassSessionApi,
+  deleteClassSessionApiV1ClassSessionsSessionIdDelete as deleteClassSessionApi,
+  startClassSessionApiV1ClassSessionsSessionIdStartPost as startClassSessionApi,
+  endClassSessionApiV1ClassSessionsSessionIdEndPost as endClassSessionApi,
+  joinClassSessionApiV1ClassSessionsSessionIdJoinPost as joinClassSessionApi,
+  listBreakoutsApiV1ClassSessionsSessionIdBreakoutsGet as listBreakoutsApi,
+  createBreakoutApiV1ClassSessionsSessionIdBreakoutsPost as createBreakoutApi,
+  closeBreakoutApiV1ClassSessionsSessionIdBreakoutsBreakoutIdClosePost as closeBreakoutApi,
+  requestHelpInBreakoutApiV1ClassSessionsSessionIdBreakoutsBreakoutIdHelpPost as requestHelpInBreakoutApi,
+  joinBreakoutApiV1ClassSessionsSessionIdBreakoutsBreakoutIdJoinPost as joinBreakoutApi,
+  moveBreakoutParticipantApiV1ClassSessionsSessionIdBreakoutsBreakoutIdMovePost as moveBreakoutParticipantApi,
+  broadcastToBreakoutsApiV1ClassSessionsSessionIdBreakoutsBroadcastPost as broadcastToBreakoutsApi,
+  listRecordingsApiV1ClassSessionsSessionIdRecordingsGet as listRecordingsApi,
+  startRecordingApiV1ClassSessionsSessionIdRecordingsPost as startRecordingApi,
+  stopRecordingEndpointApiV1ClassSessionsSessionIdRecordingsRecordingIdStopPost as stopRecordingApi,
+} from '../../../api/generated'

@@ -1,0 +1,65 @@
+[project]
+name = "joint-aviation-institute-information-system"
+version = "0.1.0"
+description = "JAI Information System API"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "psycopg2-binary>=2.9.0",
+    "python-jose[cryptography]>=3.3.0",
+    "bcrypt>=4.0.0",
+    "python-multipart>=0.0.9",
+    "python-docx>=1.1.2",
+    "pydantic[email]>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "ldap3>=2.9.0",
+    "slowapi>=0.1.9",
+    "filetype>=1.2.0",
+    "pillow>=12.0.0",
+    "websockets>=16.0.0",
+    "requests>=2.33.1",
+    "apscheduler>=3.10.0",
+    "livekit>=1.1.8",
+    "livekit-api>=1.1.0",
+    "websockets>=16.0.0",
+    "livekit>=1.1.8",
+    "openai>=1.30.0",
+    "httpx>=0.27.0",
+    "mcp>=1.9.0",
+    # RAG: pgvector column type + in-process HybridChunker (docling-core) with
+    # the bge-m3 tokenizer (transformers/tokenizers; sentencepiece for the
+    # XLM-RoBERTa tokenizer bge-m3 is built on). Only the tokenizer is
+    # downloaded at runtime, not the embedding model weights.
+    "pgvector>=0.3.0",
+    # [chunking] pulls semchunk + tokenizers needed by HybridChunker.
+    "docling-core[chunking]>=2.0.0",
+    "transformers>=4.40.0",
+    "sentencepiece>=0.2.0",
+    "pyodbc>=5.3.0",
+]
+
+[project.optional-dependencies]
+# In-process embeddings (EMBEDDING_BACKEND=local). Heavy — pulls torch.
+# Dense-only engine:
+local-embedding = [
+    "sentence-transformers>=3.0.0",
+]
+
+# Official bge-m3 wrapper (dense now, sparse-ready): EMBEDDING_LOCAL_ENGINE=flagembedding
+local-embedding-flag = [
+    "FlagEmbedding>=1.2.0",
+]
+
+dev = [
+    "pytest>=8.0.0",
+    "httpx>=0.27.0",
+    "pytest-anyio>=0.0.0",
+    "anyio[trio]>=4.0.0",
+]
+
+[tool.uv]
+index-url = "http://aitfs.jac.mil.ae:9081/repository/esnaad-pypy/simple/" 
+

@@ -1,0 +1,2 @@
+echo "[pre-push] Running frontend full build..."
+cd frontend && npm run build

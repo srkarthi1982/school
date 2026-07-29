@@ -1,0 +1,438 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Local Fonts ------------------------------------------------------ */
+
+/* Inter � Latin */
+@font-face {
+    font-family: 'Inter';
+    font-style:  normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/inter/Inter-Regular.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style:  normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/inter/Inter-Medium.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style:  normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style:  normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/inter/Inter-Bold.woff2') format('woff2');
+}
+
+/* IBM Plex Sans Arabic � Arabic / RTL */
+@font-face {
+    font-family: 'IBM Plex Sans Arabic';
+    font-style:  normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/ibm-plex-arabic/IBMPlexSansArabic-Regular.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'IBM Plex Sans Arabic';
+    font-style:  normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/ibm-plex-arabic/IBMPlexSansArabic-Medium.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'IBM Plex Sans Arabic';
+    font-style:  normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/fonts/ibm-plex-arabic/IBMPlexSansArabic-SemiBold.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'IBM Plex Sans Arabic';
+    font-style:  normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/ibm-plex-arabic/IBMPlexSansArabic-Bold.woff2') format('woff2');
+}
+
+/* --- Design Tokens --------------------------------------------------- */
+:root {
+    --font: 'Inter', system-ui, sans-serif;
+
+    /* Surfaces */
+    --bg:           #ECF0F6;
+    --surface:      #ffffff;
+    --surface-2:    #F5F7FA;
+    --border:       #DDE3EE;
+
+    /* Text */
+    --text-primary:   #0D1B2A;
+    --text-secondary: #4A5568;
+    --text-muted:     #8A97AA;
+
+    /* Brand */
+    --accent:       #06555C;
+    --accent-light: rgba(6, 85, 92, 0.09);
+    --accent-glow:  rgba(6, 85, 92, 0.18);
+    --accent-dark:  #033F45;
+
+    /* Semantic status */
+    --success:       #059669;
+    --success-light: rgba(5, 150, 105, 0.10);
+    --danger:        #DC2626;
+    --danger-light:  rgba(220, 38, 38, 0.10);
+    --danger-glow:   rgba(220, 38, 38, 0.18);
+    --warning:       #D97706;
+    --warning-light: rgba(217, 119, 6, 0.12);
+
+    /* Navy */
+    --navy:         #11244E;
+    --navy-mid:     #0D1B3A;
+    --navy-deep:    #080F24;
+    --navy-light:   rgba(17, 36, 78, 0.09);
+
+    /* Sidebar / bottom-nav chrome (dark teal — identical in both themes) */
+    --sidebar-gradient: linear-gradient(170deg, #06555C 0%, #033F45 55%, #022C32 100%);
+
+    /* Topbar */
+    --topbar-bg:     #ffffff;
+    --topbar-border: #DDE3EE;
+
+    /* Elevation */
+    --shadow-xs: 0 1px 2px rgba(13, 27, 42, 0.05);
+    --shadow-sm: 0 1px 4px rgba(13, 27, 42, 0.07), 0 2px 8px rgba(13, 27, 42, 0.04);
+    --shadow-md: 0 4px 12px rgba(13, 27, 42, 0.08), 0 2px 4px rgba(13, 27, 42, 0.05);
+}
+
+[data-theme="dark"] {
+    --bg:           #0B1221;
+    --surface:      #131D2E;
+    --surface-2:    #192438;
+    --border:       #1F2E42;
+
+    --text-primary:   #EEF2F8;
+    --text-secondary: #8A97B0;
+    --text-muted:     #546070;
+
+    --accent:       #2DD4BF;
+    --accent-light: rgba(45, 212, 191, 0.09);
+    --accent-glow:  rgba(45, 212, 191, 0.2);
+
+    --topbar-bg:     #131D2E;
+    --topbar-border: #1F2E42;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Reset ----------------------------------------------------------- */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body, #root {
+    height: 100%;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Component classes (Tailwind cannot express these) --------------- */
+@layer components {
+
+/* --- Scrollbars ------------------------------------------------------- */
+/* Sidebar (dark): scrollbar fully hidden — content still scrolls via wheel/
+   touch. Hidden completely so the active-item highlight extends edge-to-edge
+   without the gutter notch that Chrome reserves for thin webkit tracks. */
+.thin-scrollbar {
+    overflow: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.thin-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Content areas (light): hover-reveal — thumb stays transparent until the
+   user hovers the scrollable container. */
+
+.thin-scrollbar-light {
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 220ms ease;
+}
+.thin-scrollbar-light:hover {
+    scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+}
+.thin-scrollbar-light::-webkit-scrollbar         { width: 3px; height: 3px; }
+.thin-scrollbar-light::-webkit-scrollbar-track  { background: transparent; }
+.thin-scrollbar-light::-webkit-scrollbar-thumb  {
+    background: transparent;
+    border-radius: 99px;
+    transition: background 220ms ease;
+}
+.thin-scrollbar-light:hover::-webkit-scrollbar-thumb        { background: rgba(0,0,0,0.14); }
+.thin-scrollbar-light::-webkit-scrollbar-thumb:hover        { background: rgba(0,0,0,0.26); }
+
+/* --- Sidebar nav button ----------------------------------------------- */
+.nav-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px 0px;
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.48);
+    cursor: pointer;
+    font-family: var(--font);
+    text-decoration: none;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+.nav-btn svg {
+    transition: filter 320ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+.nav-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: rgba(255, 255, 255, 0.82);
+}
+.nav-btn.active {
+    background: rgba(255, 255, 255, 0.11);
+    color: #ffffff;
+}
+.nav-btn.active svg {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+.nav-btn-label {
+    font-size: 10.5px;
+    font-weight: 500;
+    white-space: normal;
+    letter-spacing: 0.025em;
+    text-align: center;
+    line-height: 1.3;
+    max-width: 100px;
+}
+
+/* Mobile submenu tabs (horizontal sliding pill) */
+.mobile-submenu-pill {
+    position: absolute;
+    top: 0.5rem;     /* matches container py-2 */
+    bottom: 0.5rem;
+    left: 0;
+    background: var(--accent-light);
+    border-radius: 9999px;
+    pointer-events: none;
+    transition:
+        transform 280ms cubic-bezier(0.65, 0, 0.35, 1),
+        width     280ms cubic-bezier(0.65, 0, 0.35, 1),
+        opacity   180ms ease;
+    will-change: transform, width;
+}
+.mobile-submenu-tab {
+    transition: color 220ms ease;
+}
+
+/* Submenu (in-page side rail) sliding pill background */
+.submenu-active-pill {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
+    top: 0;
+    background: var(--accent-light);
+    border-radius: 10px;
+    pointer-events: none;
+    transition:
+        transform 280ms cubic-bezier(0.65, 0, 0.35, 1),
+        height    280ms cubic-bezier(0.65, 0, 0.35, 1),
+        opacity   180ms ease;
+    will-change: transform, height;
+}
+.submenu-active-pill::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    top: 18%;
+    bottom: 18%;
+    width: 3px;
+    background: var(--accent);
+    border-start-end-radius: 3px;
+    border-end-end-radius: 3px;
+}
+.submenu-link {
+    transition: color 220ms ease;
+}
+
+/* Bottom nav (mobile) sliding indicator + icon glow */
+.bottom-nav-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: #2DD4BF;
+    border-bottom-left-radius: 3px;
+    border-bottom-right-radius: 3px;
+    pointer-events: none;
+    box-shadow: 0 1px 4px rgba(45, 212, 191, 0.3);
+    transition:
+        transform 320ms cubic-bezier(0.65, 0, 0.35, 1),
+        width     320ms cubic-bezier(0.65, 0, 0.35, 1),
+        opacity   180ms ease;
+    will-change: transform, width;
+}
+.bnav-link svg {
+    transition: filter 320ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+.bnav-link.active svg {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+/* RTL-aware sliding active indicator (single element, slides between active items) */
+.sidebar-active-indicator {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0;
+    width: 3px;
+    background: #2DD4BF;
+    border-start-end-radius: 3px;
+    border-end-end-radius: 3px;
+    pointer-events: none;
+    box-shadow: 0 0 4px rgba(45, 212, 191, 0.3);
+    transition:
+        transform 320ms cubic-bezier(0.65, 0, 0.35, 1),
+        height    320ms cubic-bezier(0.65, 0, 0.35, 1),
+        opacity   180ms ease;
+    will-change: transform, height;
+}
+
+/* --- Top bar buttons -------------------------------------------------- */
+.icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    font-family: var(--font);
+}
+.icon-btn:hover {
+    background: var(--accent-light);
+    color: var(--accent);
+}
+
+.lang-btn {
+    padding: 5px 11px;
+    border-radius: 7px;
+    border: 1.5px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.06em;
+    font-family: var(--font);
+    transition: all 0.15s ease;
+}
+.lang-btn:hover:not(.active) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.lang-btn.active {
+    background: var(--accent-light);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* --- Card panel ------------------------------------------------------- */
+.card {
+    background: var(--surface);
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- Progress bar ----------------------------------------------------- */
+.progress-track {
+    height: 8px;
+    background: var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+}
+
+/* --- Auto-save fade-out animation --------------------------------------- */
+@keyframes fade-out {
+    0%   { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* --- Chat typing indicator dots ------------------------------------------ */
+@keyframes chat-bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30%           { transform: translateY(-3px); opacity: 1; }
+}
+
+} /* end @layer components */
+
+/* --- RTL font override ----------------------------------------------- */
+[dir="rtl"] {
+    font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif;
+}
+
+/* --- react-day-picker theming ---------------------------------------- */
+.rdp-root {
+    --rdp-accent-color: var(--accent);
+    --rdp-accent-background-color: var(--accent-light);
+    --rdp-today-color: var(--accent);
+    --rdp-day-height: 2rem;
+    --rdp-day-width: 2rem;
+    font-family: var(--font);
+}
+.rdp-day_button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+.rdp-selected-accent .rdp-day_button {
+    background: var(--accent);
+    color: #fff;
+}
+.rdp-today-accent:not(.rdp-selected-accent) .rdp-day_button {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+/* --- Virtual classroom (LiveKit) ------------------------------------- */
+
+/* E1 — hide the screen-share button in the prebuilt VideoConference for
+   non-host participants. Backend already rejects the publish via
+   can_publish_sources, this just keeps a dead-but-clickable button out
+   of student UIs. */
+[data-classroom-host="false"] button[data-lk-source="screen_share"] {
+    display: none !important;
+}
+

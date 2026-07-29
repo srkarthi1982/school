@@ -1,0 +1,2 @@
+echo "[pre-commit] Running frontend type-check..."
+cd frontend && npm run type-check

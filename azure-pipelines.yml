@@ -1,0 +1,61 @@
+trigger:
+  branches:
+    include:
+      - develop
+
+pool:
+  name: WinServer2022-Build
+
+variables:
+  # The agent tags every process a job spawns with VSTS_PROCESS_LOOKUP_ID and
+  # kills them all when the job ends. The deploy script leaves the backend
+  # (start-server.bat -> uvicorn) running after the job, so process cleanup
+  # must be disabled for this job or the server is reaped moments after the
+  # pipeline goes green. Belt and braces: this variable turns the agent's
+  # cleanup off, and the deploy step below also clears the lookup id so the
+  # server tree is never tagged in the first place.
+  process.clean: 'false'
+  BindHost: 0.0.0.0
+  Port: 8000
+
+stages:
+  - stage: DeployQA
+    displayName: Deploy QA
+    jobs:
+      - job: Deploy
+        displayName: Run deploy script
+        steps:
+          - checkout: self
+            clean: true  # Safely removes all files in $(Build.SourcesDirectory) before Git checkout
+
+          - task: PowerShell@2
+            displayName: 'Copy .env files to project'
+            inputs:
+              targetType: inline
+              pwsh: false
+              script: |
+                # Force-copy fresh env every run. The deploy script itself only
+                # copies when a workspace .env is absent (skip-if-exists), so
+                # doing the refresh here keeps CI on the latest C:\qa-env values.
+                Copy-Item -Path "C:\qa-env\.env" `
+                          -Destination "$(Build.SourcesDirectory)\backend\.env" `
+                          -Force
+                Copy-Item -Path "C:\qa-env\.env.frontend" `
+                          -Destination "$(Build.SourcesDirectory)\frontend\.env" `
+                          -Force
+                Write-Host ".env files copied successfully"
+
+          - task: PowerShell@2
+            displayName: Deploy QA
+            inputs:
+              targetType: inline
+              pwsh: false
+              script: |
+                # Clear the agent's process tag so the server started by
+                # deploy.ps1 (Start-Process start-server.bat) is not killed by
+                # the agent's end-of-job process cleanup.
+                $env:VSTS_PROCESS_LOOKUP_ID = ''
+                & "$(System.DefaultWorkingDirectory)\scripts\deploy.ps1" `
+                    -BindHost $(BindHost) `
+                    -Port $(Port)
+                exit $LASTEXITCODE

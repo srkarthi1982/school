@@ -1,0 +1,26 @@
+[
+    {
+        "id":"q1",
+        "text":"How satisfied are you with the course?",
+        "type":"rating",
+        "options":[
+            {"id":"1","text":"Very Dissatisfied","weight":1},
+            {"id":"2","text":"Dissatisfied","weight":2},
+            {"id":"3","text":"Neutral","weight":3},
+            {"id":"4","text":"Saticsfied","weight":4},
+            {"id":"5","text":"Very Saticsfied","weight":5}
+        ],
+        "weight":10
+    },
+    {
+        "id":"q2",
+        "text":"What topics should we cover next?",
+        "type":"multiple",
+        "options":[
+            {"id":"a","text":"React"},
+            {"id":"b","text":"TS"},
+            {"id":"c","text":"Next.js"}
+        ],
+        "weight":5
+    }
+]
