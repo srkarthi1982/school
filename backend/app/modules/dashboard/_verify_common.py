@@ -45,7 +45,7 @@ def make_params(report_type, **overrides):
 db = FakeDB()
 full_filters = dict(
     courseInstance="10", courseVersion="v1", instructor="5",
-    lesson="3", evaluationType="theory", material="abc-def-uuid",
+    lesson="3", evaluationType="theory", material="00000000-0000-0000-0000-000000000001",
     dateRange="7d", student="7",
 )
 

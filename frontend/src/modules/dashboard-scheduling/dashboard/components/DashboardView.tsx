@@ -20,21 +20,29 @@ const toneLabels: Record<string, string> = {
   info: 'Info',
 };
 export default function DashboardView() {
-  const { resetFilters, setFilters, filterOptions, filters, dashboardInfo } = useDashboardStore(
+  const { resetFilters, setFilters, filterOptions, filters, dashboardInfo, loading, error } = useDashboardStore(
     useShallow((s) => ({
       resetFilters: s.resetFilters,
       setFilters: s.setFilters,
       filterOptions: s.filterOptions,
       filters: s.filters,
       dashboardInfo: s.dashboardInfo,
+      loading: s.loading,
+      error: s.error,
     }))
   );
   return (
     <div className="grid gap-5">
+      {error && (
+        <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800" role="alert">
+          {error}
+        </div>
+      )}
       <FilterBar
         actions={
-          <Button onClick={resetFilters} variant="ghost">Reset</Button>
+          <Button disabled={loading} onClick={resetFilters} variant="ghost">Reset</Button>
         }
+        disabled={loading}
         filters={filterOptions.map((filter) => ({
           label: filter.label,
           options: filter.options,
@@ -42,6 +50,11 @@ export default function DashboardView() {
           onChange: (value) => setFilters({ [filter.key]: value }),
         }))}
       />
+      {loading && (
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600" role="status">
+          Loading dashboard data…
+        </div>
+      )}
       <div className="grid gap-5 xl:grid-cols-[1fr_22rem]">
         <div className="grid gap-5">
           <MainGrid className="lg:grid-cols-2">

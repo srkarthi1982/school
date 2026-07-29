@@ -6,7 +6,7 @@ import type { DashboardResponse } from '../../../api/generated';
 export type DashboardKey = 'leadership' | 'sat' | 'instructor' | 'student';
 export type PermissionsSet = Set<PermissionCode>;
 export type DashboardFilterState = {
-    report_type: string;
+    report_type: DashboardKey;
     course: string;
     courseVersion: string;
     courseInstance: string;
@@ -102,10 +102,13 @@ type DashboardStore = {
     filters: DashboardFilterState;
     filterOptions: DashboardResponse["filterOptions"];
     dashboardInfo: DashboardInfo;
+    loading: boolean;
+    error: string | null;
     getDashboardInfo: (parameters: Partial<DashboardFilterState>) => Promise<void>;    
     resetFilters: () => void;
     setFilters: (filters: Partial<DashboardFilterState>) => void;
 };
+let dashboardRequestId = 0;
 export const defaultDashboardFilters: DashboardFilterState = {
     report_type: 'leadership',
     course: 'all',
@@ -185,12 +188,44 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
             coverageSections: [] as CoverageSection[],
         },
     } as DashboardInfo,
+    loading: false,
+    error: null,
     getDashboardInfo: async (parameters) => {
-        const response = (await api.getInfoApiV1DashboardInfoGet({ query: parameters })).data;
-        if (response) {
-            const { dashboardInfo, filterOptions, filters } = response;
-            const mergedFilters = { ...defaultDashboardFilters, ...filters };
-            set({ dashboardInfo, filterOptions, filters: mergedFilters });
+        const requestId = ++dashboardRequestId;
+        set({ loading: true, error: null });
+        try {
+            const result = await api.getInfoApiV1DashboardInfoGet({ query: parameters });
+            if (requestId !== dashboardRequestId) return;
+            if (result.error) {
+                set({ error: 'Unable to load dashboard data.', loading: false });
+                return;
+            }
+            if (result.data) {
+                const { dashboardInfo, filterOptions, filters } = result.data;
+                const validReportTypes: DashboardKey[] = [
+                    'leadership',
+                    'sat',
+                    'instructor',
+                    'student',
+                ];
+                const reportType = validReportTypes.includes(
+                    filters.report_type as DashboardKey,
+                )
+                    ? (filters.report_type as DashboardKey)
+                    : defaultDashboardFilters.report_type;
+                const mergedFilters: DashboardFilterState = {
+                    ...defaultDashboardFilters,
+                    ...filters,
+                    report_type: reportType,
+                };
+                set({ dashboardInfo, filterOptions, filters: mergedFilters, loading: false });
+            } else {
+                set({ error: 'Dashboard returned no data.', loading: false });
+            }
+        } catch {
+            if (requestId === dashboardRequestId) {
+                set({ error: 'Unable to load dashboard data.', loading: false });
+            }
         }
     },    
     setFilters: (filter) => {
@@ -199,8 +234,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
         getDashboardInfo({ ...filters, ...filter });
     },
     resetFilters: () => {
-        const { getDashboardInfo } = get();
-        set({ filters: defaultDashboardFilters })
-        getDashboardInfo(defaultDashboardFilters);
+        const { filters, getDashboardInfo } = get();
+        const reset = { ...defaultDashboardFilters, report_type: filters.report_type };
+        set({ filters: reset })
+        void getDashboardInfo(reset);
     }    
 }));

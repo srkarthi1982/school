@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from .schemas import DashboardSummaryResponse, DashboardResponse, DashboardFilterState
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_user_permission_codes
+from app.core.permissions import PermissionCode
 from sqlalchemy import select, func, distinct
 from app.modules.course_info.models import MasterAircraftType, MasterSimulatorType
 from app.modules.course_selection_material.models import CourseSelectionMaterialFile, CourseSelectionMaterialUserProgress
@@ -92,6 +95,13 @@ from .sat import (
 from .kpis import get_kpi_categories, get_api_export_kpis
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+_REPORT_PERMISSIONS = {
+    "leadership": PermissionCode.DASHBOARD_LEADERSHIP.value,
+    "sat": PermissionCode.DASHBOARD_SAT.value,
+    "instructor": PermissionCode.DASHBOARD_INSTRUCTOR.value,
+    "student": PermissionCode.DASHBOARD_STUDENT.value,
+}
   
 from .common import (
     get_alerts,
@@ -274,10 +284,21 @@ def get_student(db: Session = Depends(get_db), user: "User" = Depends(get_curren
     }
     
 @router.get("/info", response_model=DashboardResponse)
-def get_info(db: Session = Depends(get_db), user: "User" = Depends(get_current_user), params: DashboardFilterState = Depends()):
+def get_info(
+    params: Annotated[DashboardFilterState, Query()],
+    db: Session = Depends(get_db),
+    user: "User" = Depends(get_current_user),
+):
     """
     Return generic dashboard information based on the report_type filter.
     """
+    required_permission = _REPORT_PERMISSIONS[params.report_type]
+    if required_permission not in get_user_permission_codes(user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing required permission: {required_permission}",
+        )
+
     if params.report_type == "leadership":
         return get_leadership(db, user, params)
     elif params.report_type == "sat":
@@ -286,6 +307,4 @@ def get_info(db: Session = Depends(get_db), user: "User" = Depends(get_current_u
         return get_instructor(db, user, params)
     elif params.report_type == "student":
         return get_student(db, user, params)
-    else:
-        # Fallback to leadership view
-        return get_leadership(db, user, params)
+    return get_student(db, user, params)

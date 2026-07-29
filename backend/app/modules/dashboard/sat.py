@@ -677,14 +677,18 @@ def get_sat_pass_rate_strip(db: Session, params: DashboardFilterState = None) ->
     """
     # Total quiz attempts (only quiz content)
     total_stmt = (
-        select(func.count(QuizAttempt.id))
+        select(func.count(func.distinct(QuizAttempt.id)))
         .join(CourseSelectionLessonRelease, QuizAttempt.quiz_id == CourseSelectionLessonRelease.content_id)
-        .where(CourseSelectionLessonRelease.content_type == "quiz")
+        .join(EvaluationLessonQuiz, EvaluationLessonQuiz.quiz_id == QuizAttempt.quiz_id)
+        .where(
+            CourseSelectionLessonRelease.content_type == "quiz",
+            EvaluationLessonQuiz.pass_mark > 0,
+        )
     )
 
     # Passed attempts
     passed_stmt = (
-        select(func.count(QuizAttempt.id))
+        select(func.count(func.distinct(QuizAttempt.id)))
         .join(CourseSelectionLessonRelease, QuizAttempt.quiz_id == CourseSelectionLessonRelease.content_id)
         .join(EvaluationLessonQuiz, EvaluationLessonQuiz.quiz_id == QuizAttempt.quiz_id)
         .where(

@@ -1,5 +1,7 @@
-from pydantic import BaseModel
-from typing import List, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, field_validator
+from typing import List, Literal, Optional
 
 
 class DashboardSummaryResponse(BaseModel):
@@ -26,7 +28,7 @@ class DashboardFilterConfig(BaseModel):
 
 
 class DashboardFilterState(BaseModel):
-    report_type: str = "leadership"
+    report_type: Literal["leadership", "sat", "instructor", "student"] = "leadership"
     course: str = "all"
     courseVersion: str = "all"
     courseInstance: str = "all"
@@ -39,6 +41,38 @@ class DashboardFilterState(BaseModel):
     aircraftSimulator: str = "all"
     material: str = "all"
     evaluationType: str = "all"
+
+    @field_validator(
+        "course",
+        "courseInstance",
+        "student",
+        "instructor",
+        "lesson",
+    )
+    @classmethod
+    def validate_numeric_filter(cls, value: str) -> str:
+        if value == "all":
+            return value
+        if not value.isdecimal() or int(value) < 1:
+            raise ValueError("must be 'all' or a positive integer ID")
+        return value
+
+    @field_validator("dateRange")
+    @classmethod
+    def validate_date_range(cls, value: str) -> str:
+        if value not in {"all", "24h", "7d", "30d"}:
+            raise ValueError("must be one of: all, 24h, 7d, 30d")
+        return value
+
+    @field_validator("material")
+    @classmethod
+    def validate_material(cls, value: str) -> str:
+        if value != "all":
+            try:
+                UUID(value)
+            except ValueError as exc:
+                raise ValueError("must be 'all' or a valid UUID") from exc
+        return value
 
 
 class AlertItem(BaseModel):
