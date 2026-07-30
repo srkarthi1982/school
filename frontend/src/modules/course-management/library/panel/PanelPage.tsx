@@ -57,6 +57,8 @@ import {
     updateMaterialApiV1LibraryMaterialIdPut,
     uploadMaterialApiV1LibraryUploadPost,
 } from '../../../../api/generated';
+import { client } from '../../../../api/client';
+import { formDataBodySerializer } from '../../../../api/generated/core/bodySerializer.gen';
 import type { CourseMasterResponse } from '../../../../api/generated/types.gen';
 import useAuthStore, { selectUser, selectUserPermissions } from '../../../../infra/auth/useAuthStore';
 import type { PermissionCode } from '../../../../infra/shared/types/permissions';
@@ -68,7 +70,6 @@ import SectionHeader from '../../../../infra/shared/components/SectionHeader';
 import ProgressBar from './ProgressBar';
 import { useLibrarySummaryStore } from '../store';
 import SummarizingStatusPill from '../../../../infra/shared/components/SummarizingStatusPill';
-import { access } from 'fs';
 
 // ---------------------------------------------------------------------------
 // Static config & pure helpers (no React state)
@@ -140,16 +141,27 @@ const STATUS_COLORS: Record<ApprovedStatus, { bg: string; text: string }> = {
     approved: { bg: 'rgba(34,197,94,0.12)', text: '#16A34A' },
     rejected: { bg: 'rgba(220,38,38,0.12)', text: '#DC2626' },
     pending: { bg: 'rgba(245,158,11,0.12)', text: '#D97706' },
+    unknown: { bg: 'rgba(100,116,139,0.12)', text: '#64748B' },
 };
 
-const StatusBadge = ({ status }: { status: ApprovedStatus }) => (
-    <span
-        className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize"
-        style={{ background: STATUS_COLORS[status].bg, color: STATUS_COLORS[status].text }}
-    >
-        {status}
-    </span>
-);
+const normalizeApprovedStatus = (status?: string | null): ApprovedStatus => {
+    const normalized = status?.trim().toLowerCase();
+    return normalized === 'approved' || normalized === 'rejected' || normalized === 'pending'
+        ? normalized
+        : 'unknown';
+};
+
+const StatusBadge = ({ status }: { status: ApprovedStatus }) => {
+    const colors = STATUS_COLORS[status] ?? STATUS_COLORS.unknown;
+    return (
+        <span
+            className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize"
+            style={{ background: colors.bg, color: colors.text }}
+        >
+            {status}
+        </span>
+    );
+};
 
 
 /** Decide whether `user` is allowed to open `file`. */
@@ -249,8 +261,15 @@ export default function LibraryPanelPage() {
     const [search, setSearch] = useState('');
     const [uploadError, setUploadError] = useState<string | null>(null);
     const [creatingFolder, setCreatingFolder] = useState(false);
+    const [showAircraftUpload, setShowAircraftUpload] = useState(false);
+    const [aircraftFile, setAircraftFile] = useState<File | null>(null);
+    const [aircraftTitle, setAircraftTitle] = useState('');
+    const [aircraftDescription, setAircraftDescription] = useState('');
+    const [aircraftError, setAircraftError] = useState('');
+    const [aircraftUploading, setAircraftUploading] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const aircraftInputRef = useRef<HTMLInputElement | null>(null);
     const coverInputRef = useRef<HTMLInputElement | null>(null);
 
     // ---------------------------------------------------------------------------
@@ -305,7 +324,9 @@ export default function LibraryPanelPage() {
                 toast.error({ title: t('library.actionFailed'), body: t('library.unavailableAccess') });
                 return;
             }
-            navigate(`/course-management/library/view/${file.id}`);
+            navigate(file.aircraftViewer
+                ? `/course-management/library/aircraft-viewer/${file.id}`
+                : `/course-management/library/view/${file.id}`);
         },
         [user, perms, accessibleCourseCodes, toast, t, navigate],
     );
@@ -353,10 +374,22 @@ export default function LibraryPanelPage() {
                     fileUrl: item.file_url || '',
                     previewUrl: item.file_url || '',
                     coverImage: meta.coverImage || '',
-                    approvedStatus: (item.approved_status || 'approved') as ApprovedStatus,
+                    approvedStatus: normalizeApprovedStatus(item.approved_status || 'approved'),
                     summary_ts: item.summary_ts || null,
                     pagesRead: Number(item.pages_read ?? meta.pages_read ?? 0),
                     totalPages: Number(item.totalPages ?? meta.total_pages ?? 0),
+                    aircraftViewer: meta.content_kind === 'aircraft_viewer'
+                        && typeof meta.viewer_package_id === 'string'
+                        && typeof meta.viewer_entrypoint === 'string'
+                        && ['index.htm', 'index.html'].includes(meta.viewer_entrypoint.toLowerCase())
+                        ? {
+                            content_kind: 'aircraft_viewer',
+                            viewer_package_id: meta.viewer_package_id,
+                            viewer_entrypoint: meta.viewer_entrypoint,
+                            viewer_relative_root: meta.viewer_relative_root,
+                            source_filename: meta.source_filename,
+                        }
+                        : undefined,
                 };
             });
 
@@ -661,6 +694,48 @@ export default function LibraryPanelPage() {
         }
     };
 
+    const resetAircraftUpload = () => {
+        setShowAircraftUpload(false);
+        setAircraftFile(null);
+        setAircraftTitle('');
+        setAircraftDescription('');
+        setAircraftError('');
+        setAircraftUploading(false);
+    };
+
+    const saveAircraftUpload = async () => {
+        if (!aircraftFile || aircraftUploading) return;
+        if (!aircraftFile.name.toLowerCase().endsWith('.exe')) {
+            setAircraftError('Select a supported .exe Aircraft Viewer package.');
+            return;
+        }
+        setAircraftUploading(true);
+        setAircraftError('');
+        const { data, error } = await client.post({
+            url: '/api/v1/library/aircraft-viewer/upload',
+            body: {
+                file: aircraftFile,
+                title: aircraftTitle.trim() || aircraftFile.name.replace(/\.exe$/i, ''),
+                description: aircraftDescription.trim(),
+            },
+            ...formDataBodySerializer,
+            headers: { 'Content-Type': null },
+        });
+        if (error) {
+            setAircraftError(extractErrorMessage(error));
+            setAircraftUploading(false);
+            return;
+        }
+        resetAircraftUpload();
+        await loadMaterials();
+        const newId = String((data as any)?.id ?? '');
+        if (newId) {
+            const created = useLibraryStore.getState().fileVersions.find((item) => item.id === newId);
+            if (created) setSelectedFile(created);
+        }
+        toast.success({ title: 'Aircraft Viewer uploaded' });
+    };
+
     const setApproval = async (status: Extract<ApprovedStatus, 'approved' | 'rejected'>) => {
         if (!selectedFile) return;
         const materialId = Number(selectedFile.id);
@@ -793,6 +868,32 @@ export default function LibraryPanelPage() {
                     )}
                 </nav>
                 <div className="flex items-center gap-2 shrink-0">
+                    {selectedType === 'general' && canManage && (
+                        <>
+                            <button onClick={() => aircraftInputRef.current?.click()} className={SECONDARY_BTN}>
+                                <HiOutlineArrowUpTray className="text-[18px]" />
+                                Upload Aircraft Viewer
+                            </button>
+                            <input
+                                ref={aircraftInputRef}
+                                type="file"
+                                accept=".exe,application/vnd.microsoft.portable-executable,application/x-msdownload"
+                                className="hidden"
+                                onChange={(event) => {
+                                    const selected = event.target.files?.[0];
+                                    event.target.value = '';
+                                    if (!selected) return;
+                                    if (!selected.name.toLowerCase().endsWith('.exe')) {
+                                        toast.error({ title: 'Unsupported package', body: 'Select an .exe Aircraft Viewer package.' });
+                                        return;
+                                    }
+                                    setAircraftFile(selected);
+                                    setAircraftTitle(selected.name.replace(/\.exe$/i, ''));
+                                    setShowAircraftUpload(true);
+                                }}
+                            />
+                        </>
+                    )}
                     {(canUpload(selectedType, perms) && selectedType !== 'course') && (
                         <>
                             <button onClick={() => fileInputRef.current?.click()} className={PRIMARY_BTN}>
@@ -1288,6 +1389,49 @@ export default function LibraryPanelPage() {
                         <button onClick={saveUpload} className={PRIMARY_BTN}>
                             <HiOutlineArrowUpTray className="text-[16px]" />
                             {t('library.saveUpload')}
+                        </button>
+                    </div>
+                </Modal>
+            )}
+            {showAircraftUpload && (
+                <Modal title="Upload Aircraft Viewer" onClose={resetAircraftUpload}>
+                    <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+                        <p className="text-sm text-secondary">
+                            Upload a 7-Zip-compatible self-extracting .exe containing index.htm (or index.html) and the complete
+                            Aircraft Viewer web assets. The executable is inspected and extracted, never run.
+                        </p>
+                        <Labeled label="Package">
+                            <div className={FIELD_RO_CLS}>{aircraftFile?.name || 'No file selected'}</div>
+                        </Labeled>
+                        <Labeled label="Display title">
+                            <input
+                                value={aircraftTitle}
+                                onChange={(event) => setAircraftTitle(event.target.value)}
+                                className={FIELD_CLS}
+                                disabled={aircraftUploading}
+                            />
+                        </Labeled>
+                        <Labeled label="Description" hint={t('library.optional')}>
+                            <textarea
+                                value={aircraftDescription}
+                                onChange={(event) => setAircraftDescription(event.target.value)}
+                                className={`${FIELD_CLS} min-h-24 resize-y`}
+                                disabled={aircraftUploading}
+                            />
+                        </Labeled>
+                        {aircraftError && (
+                            <div className="rounded-lg bg-[var(--danger-light)] px-3 py-2 text-sm text-[var(--danger)]">
+                                {aircraftError}
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex justify-end gap-3 px-6 py-4 border-t border-bd bg-surface shrink-0">
+                        <button onClick={resetAircraftUpload} className={SECONDARY_BTN} disabled={aircraftUploading}>
+                            {t('library.cancel')}
+                        </button>
+                        <button onClick={saveAircraftUpload} className={PRIMARY_BTN} disabled={aircraftUploading || !aircraftFile}>
+                            <HiOutlineArrowUpTray className="text-[16px]" />
+                            {aircraftUploading ? 'Validating and extracting…' : 'Upload and extract'}
                         </button>
                     </div>
                 </Modal>

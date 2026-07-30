@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import List, Literal, Optional
 
 
@@ -43,7 +43,6 @@ class DashboardFilterState(BaseModel):
     evaluationType: str = "all"
 
     @field_validator(
-        "course",
         "courseInstance",
         "student",
         "instructor",
@@ -55,6 +54,14 @@ class DashboardFilterState(BaseModel):
             return value
         if not value.isdecimal() or int(value) < 1:
             raise ValueError("must be 'all' or a positive integer ID")
+        return value
+
+    @field_validator("course")
+    @classmethod
+    def validate_course_filter(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must be 'all' or a non-empty course title")
         return value
 
     @field_validator("dateRange")
@@ -76,14 +83,31 @@ class DashboardFilterState(BaseModel):
 
 
 class AlertItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
+    code: str
     title: str
     description: Optional[str] = None
+    severity: Literal["info", "warning", "high", "critical"]
+    dashboardRole: str
+    entityType: str
+    entityIdentifier: str
+    course: Optional[str] = None
+    courseVersion: Optional[str] = None
+    courseInstance: Optional[str] = None
+    student: Optional[str] = None
+    instructor: Optional[str] = None
+    lesson: Optional[str] = None
+    currentValue: Optional[str] = None
+    threshold: Optional[str] = None
+    generatedTimestamp: str
+    recommendedAction: Optional[str] = None
     time: str
     tone: str  # 'success' | 'warning' | 'danger' | 'info'
 
 
 class Item(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     helperText: str
     label: str
     statusLabel: str
@@ -92,6 +116,7 @@ class Item(BaseModel):
 
 
 class KpiCategorySummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
     label: str
     value: str
@@ -100,6 +125,7 @@ class KpiCategorySummary(BaseModel):
 
 
 class CoverageMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
     label: str
     value: str
@@ -108,12 +134,14 @@ class CoverageMetric(BaseModel):
 
 
 class CoverageSection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
     title: str
     items: List[CoverageMetric]
 
 
 class RiskStatusItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
     area: str
     owner: str
@@ -123,6 +151,7 @@ class RiskStatusItem(BaseModel):
 
 
 class WeakLessonItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
     lesson: str
     cohort: str
@@ -131,6 +160,7 @@ class WeakLessonItem(BaseModel):
 
 
 class PendingActionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
     title: str
     owner: str
@@ -139,6 +169,7 @@ class PendingActionItem(BaseModel):
 
 
 class ExportReadinessItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     id: str
     label: str
     value: str
@@ -146,6 +177,7 @@ class ExportReadinessItem(BaseModel):
 
 
 class DashboardDetails(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     kpiCategories: List[KpiCategorySummary]
     riskStatuses: List[RiskStatusItem]
     weakLessons: List[WeakLessonItem]
@@ -155,6 +187,7 @@ class DashboardDetails(BaseModel):
 
 
 class DashboardInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     card1: Item
     card2: Item
     card3: Item
@@ -167,6 +200,7 @@ class DashboardInfo(BaseModel):
 
 
 class DashboardResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     filterOptions: List[DashboardFilterConfig]
     dashboardInfo: DashboardInfo
     filters: DashboardFilterState

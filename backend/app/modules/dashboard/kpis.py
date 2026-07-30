@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta
-
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, distinct
 
 from .schemas import DashboardFilterState
+from .policy import date_range_start
+from .query import apply_course_instance_scope
 from app.modules.course.models import (
     CourseEnrollment,
     CourseInstance,
@@ -38,34 +38,13 @@ from app.modules.evaluation.models import EvaluationLessonQuiz
 
 def _date_range_start(params: DashboardFilterState | None):
     """Return the UTC datetime start of the selected date range, or None."""
-    if not params or params.dateRange == "all":
-        return None
-    now = datetime.utcnow()
-    if params.dateRange == "24h":
-        return now - timedelta(hours=24)
-    if params.dateRange == "7d":
-        return now - timedelta(days=7)
-    if params.dateRange == "30d":
-        return now - timedelta(days=30)
-    return None
+    return date_range_start(params.dateRange) if params else None
 
 
 def _apply_course_filters(stmt, params: DashboardFilterState | None):
     """Apply courseInstance / courseVersion / instructor filters to a statement
     built on CourseInstance. Returns the (possibly re-joined) statement."""
-    if not params:
-        return stmt
-    if params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-    if params.courseVersion != "all":
-        stmt = stmt.join(CourseMaster, CourseInstance.master_id == CourseMaster.id).where(
-            CourseMaster.ctp_version == params.courseVersion
-        )
-    if params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-    return stmt
+    return apply_course_instance_scope(stmt, params)
 
 
 def _user_course_instance_ids(db: Session, user, params: DashboardFilterState | None):
@@ -106,17 +85,14 @@ def _user_course_instance_ids(db: Session, user, params: DashboardFilterState | 
             ids = ids & {int(params.courseInstance)}
         except (ValueError, TypeError):
             ids = set()
-    if params and params.courseVersion != "all":
-        valid = set(
-            db.execute(
-                select(CourseInstance.id)
-                .join(CourseMaster, CourseInstance.master_id == CourseMaster.id)
-                .where(
-                    CourseMaster.ctp_version == params.courseVersion,
-                    CourseInstance.id.in_(ids) if ids else false_clause(),
-                )
-            ).scalars().all()
+    if params and (params.course != "all" or params.courseVersion != "all"):
+        scoped = select(CourseInstance.id).where(
+            CourseInstance.id.in_(ids) if ids else false_clause()
         )
+        scoped = apply_course_instance_scope(
+            scoped, params, include_instructor=False
+        )
+        valid = set(db.execute(scoped).scalars().all())
         ids = ids & valid
     if params and params.instructor != "all":
         try:
@@ -233,7 +209,12 @@ def get_instructor_kpis(db: Session, user, params: DashboardFilterState = None) 
     )
     if _is_leadership_sat(params):
         # Global, but honour courseInstance/courseVersion via a join to CourseInstance.
-        if params and (params.courseInstance != "all" or params.courseVersion != "all"):
+        if params and (
+            params.course != "all"
+            or params.courseInstance != "all"
+            or params.courseVersion != "all"
+            or params.instructor != "all"
+        ):
             stmt = stmt.join(
                 CourseInstance, course_instructors.c.course_instance_id == CourseInstance.id
             )
@@ -249,7 +230,7 @@ def get_instructor_kpis(db: Session, user, params: DashboardFilterState = None) 
         "id": "instructor-kpis",
         "label": "Instructor KPIs",
         "value": f"{total:,}",
-        "helperText": "Workload, coordination, feedback, and schedule coverage",
+        "helperText": "Assigned instructors across delivery instances in scope",
         "tone": "info",
     }
 
@@ -273,7 +254,12 @@ def get_lesson_kpis(db: Session, user, params: DashboardFilterState = None) -> d
         == CourseSelectionInfoLessonCreation.id,
     )
     if _is_leadership_sat(params):
-        if params and (params.courseInstance != "all" or params.courseVersion != "all"):
+        if params and (
+            params.course != "all"
+            or params.courseInstance != "all"
+            or params.courseVersion != "all"
+            or params.instructor != "all"
+        ):
             stmt = stmt.join(
                 CourseInstance,
                 CourseSelectionInfoLessonCreation.course_instance_id == CourseInstance.id,
@@ -306,12 +292,11 @@ def get_external_instructor_kpis(db: Session, user, params: DashboardFilterState
     documented placeholder (mirrors the leadership view's
     get_api_export_readiness_section approach). Wired up once that table lands.
     """
-    total = 0
     return {
         "id": "external-instructor-kpis",
         "label": "External Instructor KPIs",
-        "value": f"{total}",
-        "helperText": "External coordination alerts and coverage readiness",
+        "value": "N/A",
+        "helperText": "Unavailable: no external-instructor coordination data source",
         "tone": "info",
     }
 
@@ -323,12 +308,11 @@ def get_api_export_kpis(db: Session, user, params: DashboardFilterState = None) 
     placeholder. The value reflects "no exports pending" until the export-jobs
     table is introduced.
     """
-    value = "0%"
     return {
         "id": "api-export-kpis",
         "label": "API Export KPIs",
-        "value": value,
-        "helperText": "Export jobs, payload readiness, latency, and sync success",
+        "value": "N/A",
+        "helperText": "Unavailable: no API export job or readiness data source",
         "tone": "info",
     }
 
@@ -354,9 +338,9 @@ def get_simulator_kpis(db: Session, user, params: DashboardFilterState = None) -
     total = db.execute(stmt).scalar() or 0
     return {
         "id": "simulator-kpis",
-        "label": "Flight/Simulator KPIs",
+        "label": "Session KPIs",
         "value": f"{total:,}",
-        "helperText": "Planned vs completed hours, bookings, and readiness",
+        "helperText": "Generic class sessions; no aircraft/simulator classification is stored",
         "tone": "info",
     }
 
@@ -409,9 +393,9 @@ def get_evaluation_kpis(db: Session, user, params: DashboardFilterState = None) 
     formatted = f"{total:,}"
     return {
         "id": "evaluation-kpis",
-        "label": "Evaluation KPIs",
+        "label": "Evaluation definitions",
         "value": formatted,
-        "helperText": "Completion, compliance, item weakness, and scoring backlog",
+        "helperText": "Configured evaluation quizzes in the selected scope",
         "tone": "info",
     }
 
@@ -463,12 +447,12 @@ def get_material_kpis(db: Session, user, params: DashboardFilterState = None) ->
         & (CourseSelectionMaterialUserProgress.pages_read >= CourseSelectionMaterialUserProgress.total_pages)
     )
     completed = db.execute(select(func.count()).select_from(completed_stmt.subquery())).scalar() or 0
-    percent = int(round((completed / total) * 100)) if total > 0 else 0
+    percent = int(round((completed / total) * 100)) if total > 0 else None
     return {
         "id": "material-kpis",
         "label": "Material KPIs",
-        "value": f"{percent}%",
-        "helperText": "Usage, update needs, and review effectiveness",
+        "value": f"{percent}%" if percent is not None else "N/A",
+        "helperText": f"{completed} of {total} material progress records completed",
         "tone": "info",
     }
 

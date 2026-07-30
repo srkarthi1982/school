@@ -1,5 +1,11 @@
 from sqlalchemy import func, select, distinct
 from .schemas import DashboardFilterState
+from .policy import (
+    REPEATED_WEAKNESS_MIN_OBSERVATIONS,
+    date_range_start,
+    utc_now,
+)
+from .query import apply_course_instance_scope
 from datetime import datetime, timedelta
 from app.modules.it_support.models import Ticket
 from sqlalchemy.orm import Session
@@ -26,16 +32,7 @@ _MOD_REQUEST_WAITING = "WAIT_APPROVAL"
 
 def _date_range_start(params: DashboardFilterState | None):
     """Return the UTC datetime start of the selected date range, or None."""
-    if not params or params.dateRange == "all":
-        return None
-    now = datetime.utcnow()
-    if params.dateRange == "24h":
-        return now - timedelta(hours=24)
-    if params.dateRange == "7d":
-        return now - timedelta(days=7)
-    if params.dateRange == "30d":
-        return now - timedelta(days=30)
-    return None
+    return date_range_start(params.dateRange) if params else None
 
 
 def _bucket_spec(params: DashboardFilterState | None):
@@ -51,6 +48,7 @@ def _bucket_spec(params: DashboardFilterState | None):
 
 
 def _floor_to_bucket(dt: datetime, bucket_label: str) -> datetime:
+    dt = dt.replace(tzinfo=None)
     if bucket_label == "hour":
         return dt.replace(minute=0, second=0, microsecond=0)
     return dt.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -74,18 +72,35 @@ def _zero_fill_buckets(trend_rows, bucket_count, bucket_td, bucket_label, now):
 def _apply_course_filters(stmt, params: DashboardFilterState | None):
     """Apply courseInstance / courseVersion / instructor filters to a statement
     built on CourseInstance. Returns the (possibly re-joined) statement."""
+    return apply_course_instance_scope(stmt, params)
+
+
+def _apply_course_detail_filters(stmt, params: DashboardFilterState | None):
+    stmt = _apply_course_filters(stmt, params)
     if not params:
         return stmt
-    if params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-    if params.courseVersion != "all":
-        stmt = stmt.join(CourseMaster, CourseInstance.master_id == CourseMaster.id).where(
-            CourseMaster.ctp_version == params.courseVersion
-        )
-    if params.instructor != "all":
+    if params.lesson != "all" or params.evaluationType != "all":
         stmt = stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
+            CourseSelectionLessonRelease,
+            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
+        )
+        if params.lesson != "all":
+            stmt = stmt.where(
+                CourseSelectionLessonRelease.lesson_id == int(params.lesson)
+            )
+        if params.evaluationType != "all":
+            stmt = stmt.join(
+                EvaluationLessonQuiz,
+                EvaluationLessonQuiz.quiz_id
+                == CourseSelectionLessonRelease.content_id,
+            ).where(
+                EvaluationLessonQuiz.assessment_type == params.evaluationType
+            )
+    if params.material != "all":
+        stmt = stmt.join(
+            CourseSelectionMaterialFile,
+            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
+        ).where(CourseSelectionMaterialFile.id == params.material)
     return stmt
 
 
@@ -94,27 +109,19 @@ def get_sat_courses_by_version_item(db: Session, params: DashboardFilterState = 
     Return the number of distinct course versions (master records) currently in use.
     Applies courseInstance / courseVersion / instructor filters.
     """
-    stmt = select(func.count(func.distinct(CourseInstance.master_id))).select_from(CourseInstance)
-
-    if params and params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-
-    if params and params.courseVersion != "all":
-        stmt = stmt.join(CourseMaster, CourseInstance.master_id == CourseMaster.id).where(
-            CourseMaster.ctp_version == params.courseVersion
-        )
-
-    if params and params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
+    stmt = select(
+        func.count(func.distinct(CourseMaster.ctp_version))
+    ).select_from(CourseInstance).join(
+        CourseMaster, CourseInstance.master_id == CourseMaster.id
+    )
+    stmt = apply_course_instance_scope(stmt, params, master_joined=True)
 
     count = db.execute(stmt).scalar() or 0
     return {
         "id": "sat-001",
         "label": "Courses by version",
         "value": f"{count}",
-        "helperText": "Published course versions currently in use",
+        "helperText": "Distinct CTP versions represented by delivery instances in scope",
         "tone": "info",
     }
     
@@ -123,27 +130,12 @@ def get_sat_materials_needing_update_item(db: Session, params: DashboardFilterSt
     Return the count of material files that need SAT content refresh.
     Applies courseInstance / lesson / material filters.
     """
-    stmt = select(func.count(func.distinct(CourseSelectionMaterialFile.id))).select_from(
-        CourseSelectionMaterialFile
-    )
-
-    if params and params.courseInstance != "all":
-        stmt = stmt.where(CourseSelectionMaterialFile.course_instance_id == int(params.courseInstance))
-
-    if params and params.lesson != "all":
-        stmt = stmt.where(CourseSelectionMaterialFile.lesson_id == int(params.lesson))
-
-    if params and params.material != "all":
-        # material filter value is a UUID string; the column is UUID.
-        stmt = stmt.where(CourseSelectionMaterialFile.id == params.material)
-
-    count = db.execute(stmt).scalar() or 0
     return {
         "id": "sat-003",
         "label": "Materials needing update",
-        "value": f"{count}",
-        "helperText": "Materials flagged for SAT content refresh",
-        "tone": "warning",
+        "value": "N/A",
+        "helperText": "Unavailable: materials have no revision, stale, or update-required field",
+        "tone": "info",
     }
     
 def get_sat_repeated_weak_quiz_lessons_item(db: Session, params: DashboardFilterState = None) -> dict:
@@ -194,13 +186,15 @@ def get_sat_repeated_weak_quiz_lessons_item(db: Session, params: DashboardFilter
         weak_subq = weak_subq.where(QuizAttempt.submitted_at >= start)
 
     weak_subq = weak_subq.group_by(CourseSelectionLessonRelease.lesson_id).subquery()
-    stmt = select(func.count()).where(weak_subq.c.cohort_cnt > 1)
+    stmt = select(func.count()).where(
+        weak_subq.c.cohort_cnt >= REPEATED_WEAKNESS_MIN_OBSERVATIONS
+    )
     count = db.execute(stmt).scalar() or 0
     return {
         "id": "sat-004",
         "label": "Repeated weak quiz lessons",
         "value": f"{count}",
-        "helperText": "Repeated weak quiz lessons",
+        "helperText": "Lessons below pass mark in at least two delivery instances",
         "tone": "danger",
     }
 
@@ -253,13 +247,15 @@ def get_sat_evaluation_item_weakness_trends_item(db: Session, params: DashboardF
         weak_subq = weak_subq.where(QuizAttempt.submitted_at >= start)
 
     weak_subq = weak_subq.group_by(EvaluationLessonQuiz.quiz_id).subquery()
-    stmt = select(func.count()).where(weak_subq.c.cohort_cnt > 1)
+    stmt = select(func.count()).where(
+        weak_subq.c.cohort_cnt >= REPEATED_WEAKNESS_MIN_OBSERVATIONS
+    )
     count = db.execute(stmt).scalar() or 0
     return {
         "id": "sat-005",
-        "label": "Evaluation item weakness trends",
+        "label": "Repeated weak evaluation items",
         "value": f"{count}",
-        "helperText": "Recurring weak items across evaluation forms",
+        "helperText": "Quiz items below pass mark in at least two delivery instances",
         "tone": "warning",
     }
 
@@ -300,62 +296,26 @@ def get_sat_lesson_duration_issues_item(db: Session, params: DashboardFilterStat
     count = db.execute(stmt).scalar() or 0
     return {
         "id": "sat-002",
-        "label": "Lesson duration issues",
+        "label": "Configured duration outliers",
         "value": f"{count}",
-        "helperText": "Lessons outside approved duration bands",
+        "helperText": "Configured lesson durations below 30 or above 180 minutes",
         "tone": "warning",
     }
 
 def get_sat_feedback_trends_item(db: Session, params: DashboardFilterState = None) -> dict:
+    return {
+        "id": "sat-007",
+        "label": "Feedback trends",
+        "value": "N/A",
+        "helperText": "Unavailable: support tickets are not course or student feedback",
+        "tone": "info",
+    }
+
     """
     Return the percentage change in average ticket response time (resolved tickets)
     between the most recent 12‑hour window and the preceding 12‑hour window.
     Applies the instructor filter (mapped to assigned_to_id).
     """
-    now = datetime.utcnow()
-    window = timedelta(hours=12)
-    recent_start = now - window
-    prev_start = recent_start - window
-
-    def _avg_stmt(start, end):
-        s = (
-            select(
-                func.avg(
-                    func.extract("epoch", Ticket.updated_at - Ticket.created_at) / 60
-                )
-            )
-            .where(
-                Ticket.status == "resolved",
-                Ticket.created_at >= start,
-                Ticket.created_at < end,
-            )
-        )
-        if params and params.instructor != "all":
-            s = s.where(Ticket.assigned_to_id == int(params.instructor))
-        return s
-
-    recent_avg = db.execute(_avg_stmt(recent_start, now)).scalar() or 0
-    prev_avg = db.execute(_avg_stmt(prev_start, recent_start)).scalar() or 0
-
-    # Compute percentage change (improvement if recent_avg is lower)
-    if prev_avg == 0:
-        pct_change = 0.0
-    else:
-        pct_change = ((prev_avg - recent_avg) / prev_avg) * 100
-
-    sign = "+" if pct_change >= 0 else "-"
-    value = f"{sign}{abs(pct_change):.1f}%"
-
-    tone = "success" if pct_change >= 0 else "warning"
-
-    return {
-        "id": "sat-007",
-        "label": "Feedback trends",
-        "value": value,
-        "helperText": "Avg ticket response time change vs previous 12h",
-        "tone": tone,
-    }
-
 def get_sat_course_structure_gaps_item(db: Session, params: DashboardFilterState = None) -> dict:
     """
     Return the count of course structure gaps (lessons missing a lesson_number).
@@ -392,9 +352,9 @@ def get_sat_course_structure_gaps_item(db: Session, params: DashboardFilterState
     count = db.execute(stmt).scalar() or 0
     return {
         "id": "sat-006",
-        "label": "Course structure gaps",
+        "label": "Lessons missing sequence numbers",
         "value": f"{count}",
-        "helperText": "Missing prerequisites, sequence breaks, and lesson gaps",
+        "helperText": "Lesson definitions with an empty lesson_number",
         "tone": "warning",
     }
 
@@ -410,40 +370,13 @@ def get_sat_active_candidates_card(db: Session, params: DashboardFilterState = N
         .select_from(CourseEnrollment)
         .join(CourseInstance, CourseEnrollment.course_instance_id == CourseInstance.id)
     )
-    if params and params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-    if params and params.courseVersion != "all":
-        stmt = stmt.join(CourseMaster, CourseInstance.master_id == CourseMaster.id).where(
-            CourseMaster.ctp_version == params.courseVersion
-        )
-    if params and params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-    if params and params.lesson != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
-    if params and params.material != "all":
-        stmt = stmt.join(
-            CourseSelectionMaterialFile,
-            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionMaterialFile.id == params.material)
-    if params and params.evaluationType != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        ).where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
+    stmt = _apply_course_detail_filters(stmt, params)
 
     count = db.execute(stmt).scalar() or 0
 
     # --- New-enrollment trend over the selected date range ---
     bucket_count, bucket_td, bucket_label = _bucket_spec(params)
-    now = datetime.utcnow()
+    now = utc_now()
     window_start = now - timedelta(seconds=bucket_td.total_seconds() * bucket_count)
 
     trend_stmt = (
@@ -458,12 +391,7 @@ def get_sat_active_candidates_card(db: Session, params: DashboardFilterState = N
             CourseEnrollment.enrollment_date >= window_start,
         )
     )
-    if params and params.courseInstance != "all":
-        trend_stmt = trend_stmt.where(CourseInstance.id == int(params.courseInstance))
-    if params and params.instructor != "all":
-        trend_stmt = trend_stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
+    trend_stmt = _apply_course_detail_filters(trend_stmt, params)
     trend_stmt = trend_stmt.group_by("b").order_by("b")
     trend_rows = db.execute(trend_stmt).all()
 
@@ -495,7 +423,7 @@ def get_sat_usage_volume_card(db: Session, params: DashboardFilterState = None) 
     bucket. Applies the instructor filter (host_user_id) and date range.
     """
     bucket_count, bucket_td, bucket_label = _bucket_spec(params)
-    now = datetime.utcnow()
+    now = utc_now()
     window_start = now - timedelta(seconds=bucket_td.total_seconds() * bucket_count)
 
     # --- Total session count in scope (within the window) ---
@@ -563,7 +491,7 @@ def get_sat_courses_requiring_revision_item(db: Session, params: DashboardFilter
         "id": "sat-008",
         "label": "Courses requiring revision",
         "value": f"{count}",
-        "helperText": "Courses ready for SAT quality review",
+        "helperText": "Pending course modification requests awaiting approval",
         "tone": "warning" if count > 0 else "info",
     }
     
@@ -591,7 +519,7 @@ def get_sat_practice_completion_trend_card(db: Session, params: DashboardFilterS
 
     # --- Per-bucket trend by start_date ---
     bucket_count, bucket_td, bucket_label = _bucket_spec(params)
-    now = datetime.utcnow()
+    now = utc_now()
     window_start = now - timedelta(seconds=bucket_td.total_seconds() * bucket_count)
     # start_date is a DATE; compare against the window start date.
     window_start_date = window_start.date()

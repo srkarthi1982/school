@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func, distinct
 from app.modules.course.models import CourseInstance, course_instructors
 from app.modules.course.models import CourseEnrollment
+from app.modules.course_master.models import CourseMaster
 from app.modules.course_selection_material.models import CourseSelectionMaterialFile, CourseSelectionMaterialUserProgress
 from app.modules.evaluation.models import EvaluationLessonQuiz
 from app.modules.course_selection_schedule.lesson_content_models import CourseSelectionLessonRelease, CourseSelectionLessonCompletion
@@ -14,6 +15,45 @@ from app.modules.profile.models import Profile
 from app.modules.analytics.models import UsageEvent
 from .kpis import get_api_export_kpis
 from .schemas import DashboardFilterState
+from .policy import (
+    ACTIVE_COURSE_INSTANCE_STATUSES,
+    DASHBOARD_DETAIL_LIMIT,
+    REPEATED_WEAKNESS_MIN_OBSERVATIONS,
+    date_range_start,
+    utc_now,
+)
+from .query import apply_course_instance_scope
+
+
+def _apply_course_detail_scope(stmt, params: DashboardFilterState | None):
+    """Apply hierarchy plus lesson/material/evaluation filters with one release join."""
+    stmt = apply_course_instance_scope(stmt, params)
+    if not params:
+        return stmt
+    if params.lesson != "all" or params.evaluationType != "all":
+        stmt = stmt.join(
+            CourseSelectionLessonRelease,
+            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
+        )
+        if params.lesson != "all":
+            stmt = stmt.where(
+                CourseSelectionLessonRelease.lesson_id == int(params.lesson)
+            )
+        if params.evaluationType != "all":
+            stmt = stmt.join(
+                EvaluationLessonQuiz,
+                EvaluationLessonQuiz.quiz_id
+                == CourseSelectionLessonRelease.content_id,
+            ).where(
+                EvaluationLessonQuiz.assessment_type == params.evaluationType
+            )
+    if params.material != "all":
+        stmt = stmt.join(
+            CourseSelectionMaterialFile,
+            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
+        ).where(CourseSelectionMaterialFile.id == params.material)
+    return stmt
+
 
 def get_active_learners(db: Session, params: DashboardFilterState) -> dict:
     """
@@ -34,45 +74,10 @@ def get_active_learners(db: Session, params: DashboardFilterState) -> dict:
     # Join CourseInstance for filters that relate to the course instance
     stmt = stmt.join(CourseInstance, CourseEnrollment.course_instance_id == CourseInstance.id)
 
-    # Filter by specific course instance
-    if params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
+    def _scope_enrollments(query):
+        return _apply_course_detail_scope(query, params)
 
-    # Filter by instructor
-    if params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors,
-            course_instructors.c.course_instance_id == CourseInstance.id,
-        )
-        stmt = stmt.where(course_instructors.c.instructor_id == int(params.instructor))
-
-    # Filter by lesson
-    if params.lesson != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        )
-        stmt = stmt.where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
-
-    # Filter by material
-    if params.material != "all":
-        stmt = stmt.join(
-            CourseSelectionMaterialFile,
-            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
-        )
-        stmt = stmt.where(CourseSelectionMaterialFile.id == params.material)
-
-    # Filter by evaluation type
-    if params.evaluationType != "all":
-        # Join through lesson release to evaluation quiz
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        )
-        stmt = stmt.where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
+    stmt = _scope_enrollments(stmt)
 
     total = db.execute(stmt).scalar() or 0
 
@@ -82,7 +87,7 @@ def get_active_learners(db: Session, params: DashboardFilterState) -> dict:
     # ``UsageEvent.user_id`` is a users.id, so join through Profile.user_id.
     # Granularity follows the window: hourly for 24h (matches the original
     # "vs previous hour" framing), daily for 7d/30d.
-    now = datetime.utcnow()
+    now = utc_now()
     if params.dateRange == "24h":
         bucket_count, bucket_td = 24, timedelta(hours=1)
         bucket_label = "hour"
@@ -101,31 +106,7 @@ def get_active_learners(db: Session, params: DashboardFilterState) -> dict:
         select(CourseEnrollment.student_id)
         .join(CourseInstance, CourseEnrollment.course_instance_id == CourseInstance.id)
     )
-    if params.courseInstance != "all":
-        enrolled_subq = enrolled_subq.where(CourseInstance.id == int(params.courseInstance))
-    if params.instructor != "all":
-        enrolled_subq = enrolled_subq.join(
-            course_instructors,
-            course_instructors.c.course_instance_id == CourseInstance.id,
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-    if params.lesson != "all":
-        enrolled_subq = enrolled_subq.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
-    if params.material != "all":
-        enrolled_subq = enrolled_subq.join(
-            CourseSelectionMaterialFile,
-            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionMaterialFile.id == params.material)
-    if params.evaluationType != "all":
-        enrolled_subq = enrolled_subq.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        ).where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
+    enrolled_subq = _scope_enrollments(enrolled_subq)
     enrolled_subq = enrolled_subq.distinct().subquery()
 
     # Bucket timestamp down to the granularity. ``date_trunc`` keeps the
@@ -148,8 +129,8 @@ def get_active_learners(db: Session, params: DashboardFilterState) -> dict:
     # driver formats the column.
     def _floor_to_bucket(dt: datetime) -> datetime:
         if bucket_label == "hour":
-            return dt.replace(minute=0, second=0, microsecond=0)
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            return dt.replace(minute=0, second=0, microsecond=0, tzinfo=None)
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
     counts_by_bucket: dict[datetime, int] = {}
     for b, c in trend_rows:
@@ -197,7 +178,7 @@ def get_usage_volume(db: Session, params: DashboardFilterState = None) -> dict:
     """
     from datetime import datetime, timedelta
 
-    now = datetime.utcnow()
+    now = utc_now()
     if params and params.dateRange == "7d":
         bucket_count, bucket_td, bucket_label = 7, timedelta(days=1), "day"
     elif params and params.dateRange == "30d":
@@ -234,8 +215,8 @@ def get_usage_volume(db: Session, params: DashboardFilterState = None) -> dict:
 
     def _floor_to_bucket(dt: datetime) -> datetime:
         if bucket_label == "hour":
-            return dt.replace(minute=0, second=0, microsecond=0)
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            return dt.replace(minute=0, second=0, microsecond=0, tzinfo=None)
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
     counts_by_bucket: dict[datetime, int] = {}
     for b, c in trend_rows:
@@ -281,23 +262,27 @@ def get_course_health(db: Session, params: DashboardFilterState = None) -> dict:
         func.avg(CourseInstance.schedule_completion),
     ).select_from(CourseInstance)
 
-    # Filter by specific course instance
-    if params and params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-
-    # Filter by instructor via course_instructors relationship
-    if params and params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors,
-            course_instructors.c.course_instance_id == CourseInstance.id,
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-
-    # Filter by lesson
-    if params and params.lesson != "all":
+    stmt = apply_course_instance_scope(stmt, params)
+    if params and (
+        params.lesson != "all" or params.evaluationType != "all"
+    ):
         stmt = stmt.join(
             CourseSelectionLessonRelease,
             CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
+        )
+        if params.lesson != "all":
+            stmt = stmt.where(
+                CourseSelectionLessonRelease.lesson_id == int(params.lesson)
+            )
+        if params.evaluationType != "all":
+            stmt = stmt.join(
+                EvaluationLessonQuiz,
+                EvaluationLessonQuiz.quiz_id
+                == CourseSelectionLessonRelease.content_id,
+            ).where(
+                EvaluationLessonQuiz.assessment_type
+                == params.evaluationType
+            )
 
     # Filter by material
     if params and params.material != "all":
@@ -305,16 +290,6 @@ def get_course_health(db: Session, params: DashboardFilterState = None) -> dict:
             CourseSelectionMaterialFile,
             CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
         ).where(CourseSelectionMaterialFile.id == params.material)
-
-    # Filter by evaluation type
-    if params and params.evaluationType != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        ).where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
 
     result = db.execute(stmt).first()
     if result:
@@ -342,7 +317,7 @@ def get_support_response(db: Session, params: DashboardFilterState = None) -> di
     """
     from datetime import datetime, timedelta
 
-    now = datetime.utcnow()
+    now = utc_now()
 
     # Determine the start of the time window based on the selected date range.
     # Default to the previous 24 hours if no dateRange filter is provided.
@@ -391,8 +366,8 @@ def get_support_response(db: Session, params: DashboardFilterState = None) -> di
 
     def _floor_to_bucket(dt: datetime) -> datetime:
         if bucket_label == "hour":
-            return dt.replace(minute=0, second=0, microsecond=0)
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            return dt.replace(minute=0, second=0, microsecond=0, tzinfo=None)
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
 
     ms_by_bucket: dict[datetime, int] = {}
     for b, m in trend_rows:
@@ -417,80 +392,21 @@ def get_support_response(db: Session, params: DashboardFilterState = None) -> di
     }
 
 def get_completion_rate(db: Session, params: DashboardFilterState = None) -> dict:
-    """
-    Return the percentage of courses completed, applying optional filters.
-    Filters that do not map to CourseInstance fields are ignored.
-    """
-    from datetime import datetime, timedelta
-
-    # Base statements for total and completed counts
-    total_stmt = select(func.count(CourseInstance.id))
-    completed_stmt = select(func.count(CourseInstance.id)).where(
-        CourseInstance.status.in_(["COMPLETED", "CLOSED", "completed", "closed"])
+    """Return ended approved delivery instances as a percentage of approved ones."""
+    total_stmt = select(func.count(distinct(CourseInstance.id))).where(
+        func.lower(CourseInstance.status).in_(ACTIVE_COURSE_INSTANCE_STATUSES)
     )
-
-    # Apply filters to both statements
-    if params and params.courseInstance != "all":
-        total_stmt = total_stmt.where(CourseInstance.id == int(params.courseInstance))
-        completed_stmt = completed_stmt.where(CourseInstance.id == int(params.courseInstance))
-
-    if params and params.instructor != "all":
-        total_stmt = total_stmt.join(
-            course_instructors,
-            course_instructors.c.course_instance_id == CourseInstance.id,
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-        completed_stmt = completed_stmt.join(
-            course_instructors,
-            course_instructors.c.course_instance_id == CourseInstance.id,
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-
-    if params and params.lesson != "all":
-        total_stmt = total_stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
-        completed_stmt = completed_stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
-
-    if params and params.material != "all":
-        total_stmt = total_stmt.join(
-            CourseSelectionMaterialFile,
-            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionMaterialFile.id == params.material)
-        completed_stmt = completed_stmt.join(
-            CourseSelectionMaterialFile,
-            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionMaterialFile.id == params.material)
-
-    if params and params.evaluationType != "all":
-        total_stmt = total_stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        ).where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
-        completed_stmt = completed_stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        ).where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
+    completed_stmt = select(func.count(distinct(CourseInstance.id))).where(
+        func.lower(CourseInstance.status).in_(ACTIVE_COURSE_INSTANCE_STATUSES),
+        CourseInstance.end_date.is_not(None),
+        CourseInstance.end_date < utc_now().date(),
+    )
+    total_stmt = _apply_course_detail_scope(total_stmt, params)
+    completed_stmt = _apply_course_detail_scope(completed_stmt, params)
 
     # Date range filter based on CourseInstance.start_date (date)
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
-        if params.dateRange == "24h":
-            start = now - timedelta(hours=24)
-        elif params.dateRange == "7d":
-            start = now - timedelta(days=7)
-        elif params.dateRange == "30d":
-            start = now - timedelta(days=30)
-        else:
-            start = None
+        start = date_range_start(params.dateRange)
         if start:
             # Convert datetime to date for comparison with start_date column
             start_date = start.date()
@@ -499,14 +415,14 @@ def get_completion_rate(db: Session, params: DashboardFilterState = None) -> dic
 
     total = db.execute(total_stmt).scalar() or 0
     completed = db.execute(completed_stmt).scalar() or 0
-    rate = int(round((completed / total) * 100)) if total else 0
+    rate = int(round((completed / total) * 100)) if total else None
 
     return {
         "helperText": "",
-        "label": "Completion",
+        "label": "Ended approved instance rate",
         "statusLabel": "Live",
         "values": [],
-        "value": f"{rate}%",
+        "value": f"{rate}%" if rate is not None else "N/A",
     }
 
 def get_attendance_rate(db: Session, params: DashboardFilterState = None) -> dict:
@@ -583,7 +499,7 @@ def get_attendance_rate(db: Session, params: DashboardFilterState = None) -> dic
 
     # Optional date range filter on Attendance.date (date field)
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -670,7 +586,7 @@ def get_average_score(db: Session, params: DashboardFilterState = None) -> dict:
 
     # Date range filter on QuizAttempt.created_at (if present)
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -697,61 +613,21 @@ def get_active_courses_section(db: Session, params: DashboardFilterState = None)
     Return the count of active courses (status not draft/closed), applying optional filters.
     Filters that do not map to CourseInstance fields are ignored.
     """
-    from datetime import datetime, timedelta
-
     stmt = select(func.count(distinct(CourseInstance.id))).where(
-        CourseInstance.status.notin_(["draft", "closed"])
+        func.lower(CourseInstance.status).in_(
+            ACTIVE_COURSE_INSTANCE_STATUSES
+        ),
+        (CourseInstance.start_date.is_(None))
+        | (CourseInstance.start_date <= utc_now().date()),
+        (CourseInstance.end_date.is_(None))
+        | (CourseInstance.end_date >= utc_now().date()),
     )
-
-    # Filter by specific course instance
-    if params and params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-
-    # Filter by instructor via course_instructors relationship
-    if params and params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors,
-            course_instructors.c.course_instance_id == CourseInstance.id,
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-
-    # Filter by lesson
-    if params and params.lesson != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
-
-    # Filter by material
-    if params and params.material != "all":
-        stmt = stmt.join(
-            CourseSelectionMaterialFile,
-            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionMaterialFile.id == params.material)
-
-    # Filter by evaluation type
-    if params and params.evaluationType != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        ).where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
+    stmt = _apply_course_detail_scope(stmt, params)
 
     # Date range filter based on CourseInstance.start_date (date)
-    if params and params.dateRange != "all":
-        now = datetime.utcnow()
-        if params.dateRange == "24h":
-            start = now - timedelta(hours=24)
-        elif params.dateRange == "7d":
-            start = now - timedelta(days=7)
-        elif params.dateRange == "30d":
-            start = now - timedelta(days=30)
-        else:
-            start = None
-        if start:
-            start_date = start.date()
-            stmt = stmt.where(CourseInstance.start_date >= start_date)
+    start = date_range_start(params.dateRange) if params else None
+    if start:
+        stmt = stmt.where(CourseInstance.start_date >= start.date())
 
     total = db.execute(stmt).scalar() or 0
     formatted = f"{total:,}"
@@ -759,7 +635,7 @@ def get_active_courses_section(db: Session, params: DashboardFilterState = None)
         "id": "leadership-001",
         "label": "Active courses",
         "value": formatted,
-        "helperText": "Courses active in the selected operating window",
+        "helperText": "Approved delivery instances within their planned dates",
         "tone": "success",
     }
 
@@ -768,69 +644,27 @@ def get_completed_courses_section(db: Session, params: DashboardFilterState = No
     Return the count of completed/closed courses, applying optional filters.
     Filters that do not map to CourseInstance fields are ignored.
     """
-    from datetime import datetime, timedelta
-
     stmt = select(func.count(distinct(CourseInstance.id))).where(
-        CourseInstance.status.in_(["COMPLETED", "CLOSED", "completed", "closed"])
+        func.lower(CourseInstance.status).in_(
+            ACTIVE_COURSE_INSTANCE_STATUSES
+        ),
+        CourseInstance.end_date.is_not(None),
+        CourseInstance.end_date < utc_now().date(),
     )
-
-    # Filter by specific course instance
-    if params and params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-
-    # Filter by instructor via course_instructors relationship
-    if params and params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors,
-            course_instructors.c.course_instance_id == CourseInstance.id,
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-
-    # Filter by lesson
-    if params and params.lesson != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionLessonRelease.lesson_id == int(params.lesson))
-
-    # Filter by material
-    if params and params.material != "all":
-        stmt = stmt.join(
-            CourseSelectionMaterialFile,
-            CourseSelectionMaterialFile.course_instance_id == CourseInstance.id,
-        ).where(CourseSelectionMaterialFile.id == params.material)
-
-    # Filter by evaluation type
-    if params and params.evaluationType != "all":
-        stmt = stmt.join(
-            CourseSelectionLessonRelease,
-            CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-        ).join(
-            EvaluationLessonQuiz,
-            EvaluationLessonQuiz.quiz_id == CourseSelectionLessonRelease.content_id,
-        ).where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
+    stmt = _apply_course_detail_scope(stmt, params)
 
     # Date range filter based on CourseInstance.start_date (date)
-    if params and params.dateRange != "all":
-        now = datetime.utcnow()
-        if params.dateRange == "24h":
-            start = now - timedelta(hours=24)
-        elif params.dateRange == "7d":
-            start = now - timedelta(days=7)
-        elif params.dateRange == "30d":
-            start = now - timedelta(days=30)
-        else:
-            start = None
-        if start:
-            start_date = start.date()
-            stmt = stmt.where(CourseInstance.start_date >= start_date)
+    start = date_range_start(params.dateRange) if params else None
+    if start:
+        stmt = stmt.where(CourseInstance.end_date >= start.date())
 
     total = db.execute(stmt).scalar() or 0
     formatted = f"{total:,}"
     return {
         "id": "leadership-002",
-        "label": "Completed courses",
+        "label": "Ended approved instances",
         "value": formatted,
-        "helperText": "Courses closed in the selected operating window",
+        "helperText": "Approved delivery instances whose planned end date passed",
         "tone": "success",
     }
 
@@ -842,13 +676,18 @@ def get_student_pass_fail_rate_section(db: Session, params: DashboardFilterState
     from datetime import datetime, timedelta
 
     total_stmt = (
-        select(func.count(QuizAttempt.id))
+        select(func.count(distinct(QuizAttempt.id)))
         .join(CourseSelectionLessonRelease,
               QuizAttempt.quiz_id == CourseSelectionLessonRelease.content_id)
-        .where(CourseSelectionLessonRelease.content_type == "quiz")
+        .join(EvaluationLessonQuiz,
+              EvaluationLessonQuiz.quiz_id == QuizAttempt.quiz_id)
+        .where(
+            CourseSelectionLessonRelease.content_type == "quiz",
+            EvaluationLessonQuiz.pass_mark > 0,
+        )
     )
     passed_stmt = (
-        select(func.count(QuizAttempt.id))
+        select(func.count(distinct(QuizAttempt.id)))
         .join(CourseSelectionLessonRelease,
               QuizAttempt.quiz_id == CourseSelectionLessonRelease.content_id)
         .join(EvaluationLessonQuiz,
@@ -885,9 +724,8 @@ def get_student_pass_fail_rate_section(db: Session, params: DashboardFilterState
 
     # Filter by evaluation type
     if params and params.evaluationType != "all":
-        total_stmt = (
-            total_stmt.join(EvaluationLessonQuiz, EvaluationLessonQuiz.quiz_id == QuizAttempt.quiz_id)
-            .where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
+        total_stmt = total_stmt.where(
+            EvaluationLessonQuiz.assessment_type == params.evaluationType
         )
         passed_stmt = passed_stmt.where(EvaluationLessonQuiz.assessment_type == params.evaluationType)
 
@@ -905,7 +743,7 @@ def get_student_pass_fail_rate_section(db: Session, params: DashboardFilterState
 
     # Date range filter on QuizAttempt.submitted_at
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -924,12 +762,13 @@ def get_student_pass_fail_rate_section(db: Session, params: DashboardFilterState
         pass_pct = int(round((passed / total) * 100))
     else:
         pass_pct = 0
-    fail_pct = 100 - pass_pct
+    fail_pct = 100 - pass_pct if total else 0
+    display_value = f"{pass_pct}% / {fail_pct}%" if total else "N/A"
     return {
         "id": "leadership-003",
-        "label": "Student pass/fail rate",
-        "value": f"{pass_pct}% / {fail_pct}%",
-        "helperText": "Passed versus failed evaluations across active cohorts",
+        "label": "Evaluation attempt pass/fail rate",
+        "value": display_value,
+        "helperText": f"{passed} of {total} distinct scored attempts met their configured pass mark",
         "tone": "warning",
     }
 
@@ -961,7 +800,7 @@ def get_training_delays_section(db: Session, params: DashboardFilterState = None
 
     # Date range filter on scheduled_start
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -1024,7 +863,7 @@ def get_flight_simulator_hours_section(db: Session, params: DashboardFilterState
 
     # Date range filter on scheduled_start (planned) / actual_start (completed)
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -1044,9 +883,9 @@ def get_flight_simulator_hours_section(db: Session, params: DashboardFilterState
     value = f"{planned_hours:,} / {completed_hours:,}"
     return {
         "id": "leadership-005",
-        "label": "Flight/simulator hrs planned vs completed",
+        "label": "Session hrs planned vs completed",
         "value": value,
-        "helperText": "Planned training hours compared with completed hours",
+        "helperText": "All class-session hours; no flight/simulator classification is stored",
         "tone": "warning",
     }
 
@@ -1104,7 +943,7 @@ def get_weak_students_section(db: Session, params: DashboardFilterState = None) 
 
     # Date range filter on QuizAttempt.submitted_at
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -1128,30 +967,53 @@ def get_weak_students_section(db: Session, params: DashboardFilterState = None) 
 
 def get_material_effectiveness_section(db: Session, params: DashboardFilterState = None) -> dict:
     """
-    Return the count of distinct material files, applying optional filters.
-    Only filters that map to CourseSelectionMaterialFile fields are used.
+    Return the material-completion percentage supported by existing per-user
+    page progress. This intentionally does not claim causal effectiveness.
     """
-    stmt = select(func.count(distinct(CourseSelectionMaterialFile.id))).select_from(CourseSelectionMaterialFile)
-
-    # Filter by specific course instance
+    base = (
+        select(CourseSelectionMaterialUserProgress)
+        .join(
+            CourseSelectionMaterialFile,
+            CourseSelectionMaterialUserProgress.file_id
+            == CourseSelectionMaterialFile.id,
+        )
+    )
     if params and params.courseInstance != "all":
-        stmt = stmt.where(CourseSelectionMaterialFile.course_instance_id == int(params.courseInstance))
-
-    # Filter by lesson (material files carry an optional lesson_id)
+        base = base.where(
+            CourseSelectionMaterialFile.course_instance_id
+            == int(params.courseInstance)
+        )
     if params and params.lesson != "all":
-        stmt = stmt.where(CourseSelectionMaterialFile.lesson_id == int(params.lesson))
-
-    # Filter by a specific material file (UUID value)
+        base = base.where(
+            CourseSelectionMaterialFile.lesson_id == int(params.lesson)
+        )
     if params and params.material != "all":
-        stmt = stmt.where(CourseSelectionMaterialFile.id == params.material)
+        base = base.where(CourseSelectionMaterialFile.id == params.material)
+    if params and params.student != "all":
+        base = base.join(
+            Profile,
+            Profile.user_id == CourseSelectionMaterialUserProgress.user_id,
+        ).where(Profile.id == int(params.student))
 
-    total = db.execute(stmt).scalar() or 0
+    total = db.execute(
+        select(func.count()).select_from(base.subquery())
+    ).scalar() or 0
+    completed = db.execute(
+        select(func.count()).select_from(
+            base.where(
+                CourseSelectionMaterialUserProgress.total_pages > 0,
+                CourseSelectionMaterialUserProgress.pages_read
+                >= CourseSelectionMaterialUserProgress.total_pages,
+            ).subquery()
+        )
+    ).scalar() or 0
+    percentage = round((completed / total) * 100) if total else 0
     return {
         "id": "leadership-007",
-        "label": "Material effectiveness",
-        "value": f"{total:,}",
-        "helperText": "Measured by usage and post-review lift",
-        "tone": "warning",
+        "label": "Material completion",
+        "value": f"{percentage}%",
+        "helperText": f"{completed} of {total} assigned progress records completed",
+        "tone": "info",
     }
 
 def get_evaluation_compliance_section(db: Session, params: DashboardFilterState = None) -> dict:
@@ -1232,7 +1094,7 @@ def get_evaluation_compliance_section(db: Session, params: DashboardFilterState 
     # Applied only to the completed (numerator) statement: the released
     # denominator has no completion row to filter on.
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -1257,6 +1119,64 @@ def get_evaluation_compliance_section(db: Session, params: DashboardFilterState 
         "tone": "success",
     }
 
+
+def get_completed_courses_by_version_sections(
+    db: Session, params: DashboardFilterState = None
+) -> list[dict]:
+    """Break ended approved delivery instances down by master CTP version."""
+    stmt = (
+        select(
+            CourseMaster.ctp_version,
+            func.count(distinct(CourseInstance.id)).label("instance_count"),
+        )
+        .select_from(CourseInstance)
+        .join(CourseMaster, CourseInstance.master_id == CourseMaster.id)
+        .where(
+            func.lower(CourseInstance.status).in_(
+                ACTIVE_COURSE_INSTANCE_STATUSES
+            ),
+            CourseInstance.end_date.is_not(None),
+            CourseInstance.end_date < utc_now().date(),
+        )
+    )
+    if params:
+        if params.course != "all":
+            stmt = stmt.where(
+                func.lower(CourseMaster.title) == params.course.casefold()
+            )
+        if params.courseVersion != "all":
+            stmt = stmt.where(
+                CourseMaster.ctp_version == params.courseVersion
+            )
+        if params.courseInstance != "all":
+            stmt = stmt.where(
+                CourseInstance.id == int(params.courseInstance)
+            )
+        if params.instructor != "all":
+            stmt = stmt.join(
+                course_instructors,
+                course_instructors.c.course_instance_id
+                == CourseInstance.id,
+            ).where(
+                course_instructors.c.instructor_id
+                == int(params.instructor)
+            )
+    rows = db.execute(
+        stmt.group_by(CourseMaster.ctp_version).order_by(
+            CourseMaster.ctp_version.asc().nulls_last()
+        ).limit(DASHBOARD_DETAIL_LIMIT)
+    ).all()
+    return [
+        {
+            "id": f"leadership-version-{row.ctp_version or 'unversioned'}",
+            "label": f"Ended instances - {row.ctp_version or 'Unversioned'}",
+            "value": str(row.instance_count),
+            "helperText": "Approved instances past their planned end date",
+            "tone": "info",
+        }
+        for row in rows
+    ]
+
 def get_course_completion_rate_section(db: Session, params: DashboardFilterState = None) -> dict:
     """
     Return the course completion rate, applying optional filters.
@@ -1264,30 +1184,21 @@ def get_course_completion_rate_section(db: Session, params: DashboardFilterState
     """
     from datetime import datetime, timedelta
 
-    total_stmt = select(func.count(CourseInstance.id))
-    completed_stmt = select(func.count(CourseInstance.id)).where(
-        CourseInstance.status.in_(["COMPLETED", "CLOSED", "completed", "closed"])
+    today = utc_now().date()
+    total_stmt = select(func.count(distinct(CourseInstance.id))).where(
+        func.lower(CourseInstance.status).in_(ACTIVE_COURSE_INSTANCE_STATUSES)
     )
-
-    # Filter by specific course instance
-    if params and params.courseInstance != "all":
-        total_stmt = total_stmt.where(CourseInstance.id == int(params.courseInstance))
-        completed_stmt = completed_stmt.where(CourseInstance.id == int(params.courseInstance))
-
-    # Filter by instructor via course_instructors relationship
-    if params and params.instructor != "all":
-        total_stmt = (
-            total_stmt.join(course_instructors, course_instructors.c.course_instance_id == CourseInstance.id)
-            .where(course_instructors.c.instructor_id == int(params.instructor))
-        )
-        completed_stmt = (
-            completed_stmt.join(course_instructors, course_instructors.c.course_instance_id == CourseInstance.id)
-            .where(course_instructors.c.instructor_id == int(params.instructor))
-        )
+    completed_stmt = select(func.count(distinct(CourseInstance.id))).where(
+        func.lower(CourseInstance.status).in_(ACTIVE_COURSE_INSTANCE_STATUSES),
+        CourseInstance.end_date.is_not(None),
+        CourseInstance.end_date < today,
+    )
+    total_stmt = apply_course_instance_scope(total_stmt, params)
+    completed_stmt = apply_course_instance_scope(completed_stmt, params)
 
     # Date range filter based on CourseInstance.start_date (date)
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -1306,9 +1217,9 @@ def get_course_completion_rate_section(db: Session, params: DashboardFilterState
     percent = int(round((completed / total) * 100)) if total else 0
     return {
         "id": "leadership-009",
-        "label": "Course completion rate",
+        "label": "Ended approved instance rate",
         "value": f"{percent}%",
-        "helperText": "Percentage of courses completed in the selected window",
+        "helperText": f"{completed} of {total} approved instances have passed their planned end date",
         "tone": "info",
     }
 
@@ -1343,7 +1254,7 @@ def get_instructor_workload_section(db: Session, params: DashboardFilterState = 
 
     # Date range filter on scheduled_start
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -1360,11 +1271,11 @@ def get_instructor_workload_section(db: Session, params: DashboardFilterState = 
     instructor_cnt = db.execute(instructor_cnt_stmt).scalar() or 0
     avg_hours = round((total_seconds / 3600) / instructor_cnt, 1) if instructor_cnt else 0
     return {
+        "id": "leadership-010",
         "helperText": "Average planned teaching hours per instructor",
         "label": "Instructor workload",
-        "statusLabel": "Live",
-        "values": [],
         "value": f"{avg_hours} hrs",
+        "tone": "info",
     }
 
 def get_repeated_weak_lessons_section(db: Session, params: DashboardFilterState = None) -> dict:
@@ -1420,7 +1331,7 @@ def get_repeated_weak_lessons_section(db: Session, params: DashboardFilterState 
 
     # Date range filter on QuizAttempt.submitted_at
     if params and params.dateRange != "all":
-        now = datetime.utcnow()
+        now = utc_now()
         if params.dateRange == "24h":
             start = now - timedelta(hours=24)
         elif params.dateRange == "7d":
@@ -1433,7 +1344,9 @@ def get_repeated_weak_lessons_section(db: Session, params: DashboardFilterState 
             weak_subq = weak_subq.where(QuizAttempt.submitted_at >= start)
 
     weak_subq = weak_subq.group_by(CourseSelectionLessonRelease.lesson_id).subquery()
-    stmt = select(func.count()).where(weak_subq.c.cohort_cnt > 1)
+    stmt = select(func.count()).where(
+        weak_subq.c.cohort_cnt >= REPEATED_WEAKNESS_MIN_OBSERVATIONS
+    )
     count = db.execute(stmt).scalar() or 0
     return {
         "id": "leadership-011",
@@ -1444,12 +1357,10 @@ def get_repeated_weak_lessons_section(db: Session, params: DashboardFilterState 
     }
 
 def get_api_export_readiness_section(db: Session, params: DashboardFilterState = None) -> dict:
-    # kpi = get_api_export_kpis(db)
     return {
         "id": "leadership-012",
         "label": "API export readiness",
-        # "value": kpi["value"],
-        "value": "0",
-        "helperText": "Readiness of API export payloads",
-        "tone": "success",
+        "value": "N/A",
+        "helperText": "Unavailable: no API export job or readiness data source",
+        "tone": "info",
     }

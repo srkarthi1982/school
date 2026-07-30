@@ -4,6 +4,8 @@ from sqlalchemy import func, select, distinct
 from sqlalchemy.orm import Session
 
 from .schemas import DashboardFilterState
+from .policy import date_range_start, utc_now
+from .query import apply_course_instance_scope
 from app.modules.class_session.models import ClassSession
 from app.modules.course_selection_material.models import (
     CourseSelectionMaterialFile,
@@ -48,16 +50,7 @@ def _user_id_subq(user):
 
 def _date_range_start(params: DashboardFilterState | None):
     """Return the UTC datetime start of the selected date range, or None."""
-    if not params or params.dateRange == "all":
-        return None
-    now = datetime.utcnow()
-    if params.dateRange == "24h":
-        return now - timedelta(hours=24)
-    if params.dateRange == "7d":
-        return now - timedelta(days=7)
-    if params.dateRange == "30d":
-        return now - timedelta(days=30)
-    return None
+    return date_range_start(params.dateRange) if params else None
 
 
 def _bucket_spec(params: DashboardFilterState | None):
@@ -73,6 +66,7 @@ def _bucket_spec(params: DashboardFilterState | None):
 
 
 def _floor_to_bucket(dt: datetime, bucket_label: str) -> datetime:
+    dt = dt.replace(tzinfo=None)
     if bucket_label == "hour":
         return dt.replace(minute=0, second=0, microsecond=0)
     return dt.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -96,19 +90,7 @@ def _zero_fill_buckets(trend_rows, bucket_count, bucket_td, bucket_label, now):
 def _apply_course_filters(stmt, params: DashboardFilterState | None):
     """Apply courseInstance / courseVersion / instructor filters to a statement
     built on CourseInstance. Returns the (possibly re-joined) statement."""
-    if not params:
-        return stmt
-    if params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-    if params.courseVersion != "all":
-        stmt = stmt.join(CourseMaster, CourseInstance.master_id == CourseMaster.id).where(
-            CourseMaster.ctp_version == params.courseVersion
-        )
-    if params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-    return stmt
+    return apply_course_instance_scope(stmt, params)
 
 
 def _student_course_instance_ids(db: Session, user, params: DashboardFilterState | None):
@@ -533,7 +515,7 @@ def get_student_study_streak_item(db: Session, user, params: DashboardFilterStat
 
     # Streak counts consecutive days ending today OR yesterday (a student who
     # hasn't completed anything yet today but did yesterday is still on a run).
-    today = datetime.utcnow().date()
+    today = utc_now().date()
     streak = 0
     expected = today
     started = False
@@ -551,7 +533,6 @@ def get_student_study_streak_item(db: Session, user, params: DashboardFilterStat
         elif d < expected:
             break
     return {
-        "id": "student-009",
         "label": "Study streak",
         "helperText": "Consecutive days with lesson activity",
         "statusLabel": "Live",
@@ -560,22 +541,30 @@ def get_student_study_streak_item(db: Session, user, params: DashboardFilterStat
     }
 
 
-def get_student_usage_volume_card(db: Session, params: DashboardFilterState = None) -> dict:
-    """Return usage volume based on the number of ClassSession records the
-    student's instructors hosted, scoped by dateRange and course filters.
-    The count is formatted with a k/M suffix for readability."""
-    stmt = select(func.count()).select_from(ClassSession)
-    if params:
-        if params.courseInstance != "all":
-            # ClassSession has no course_instance_id; scope via the instructor's
-            # course instances is not directly possible, so we rely on dateRange
-            # here and leave courseInstance scoping to be done at a finer grain
-            # when sessions gain a course link.
-            pass
-        start = _date_range_start(params)
-        if start:
-            stmt = stmt.where(ClassSession.scheduled_start >= start)
-    count = db.execute(stmt).scalar() or 0
+def get_student_usage_volume_card(
+    db: Session, user, params: DashboardFilterState = None
+) -> dict:
+    """Return activity belonging only to the authenticated student.
+
+    Existing data supports quiz attempts and per-user material progress. Generic
+    classroom sessions are deliberately excluded because they cannot be linked
+    reliably to a student or course instance.
+    """
+    attempts_stmt = select(func.count(QuizAttempt.id)).where(
+        QuizAttempt.student_id == user.id
+    )
+    material_stmt = select(
+        func.count(CourseSelectionMaterialUserProgress.id)
+    ).where(CourseSelectionMaterialUserProgress.user_id == user.id)
+    start = _date_range_start(params)
+    if start:
+        attempts_stmt = attempts_stmt.where(QuizAttempt.submitted_at >= start)
+        material_stmt = material_stmt.where(
+            CourseSelectionMaterialUserProgress.updated_at >= start
+        )
+    count = (db.execute(attempts_stmt).scalar() or 0) + (
+        db.execute(material_stmt).scalar() or 0
+    )
 
     def _format_number(num: int) -> str:
         if num >= 1_000_000:
@@ -585,8 +574,8 @@ def get_student_usage_volume_card(db: Session, params: DashboardFilterState = No
         return str(num)
 
     return {
-        "label": "Usage volume",
-        "helperText": "Last 12 operating windows",
+        "label": "Learning activity",
+        "helperText": "Your quiz attempts and material-progress activity",
         "statusLabel": "Live",
         "values": [],
         "value": _format_number(count),
@@ -650,13 +639,15 @@ def get_student_goal_progress_item(db: Session, user, params: DashboardFilterSta
     completed_lessons_subq = completed_lessons_subq.distinct().subquery()
     total_count = db.execute(select(func.count()).select_from(total_lessons_subq)).scalar() or 0
     completed_count = db.execute(select(func.count()).select_from(completed_lessons_subq)).scalar() or 0
-    progress_percent = int((completed_count / total_count) * 100) if total_count > 0 else 0
+    progress_percent = (
+        int((completed_count / total_count) * 100)
+        if total_count > 0
+        else None
+    )
     return {
-        "id": "student-010",
         "label": "Goal progress",
-        "value": f"{progress_percent}%",
+        "value": f"{progress_percent}%" if progress_percent is not None else "N/A",
         "helperText": "Overall goal progress",
-        "tone": "success",
         "statusLabel": "Live",
         "values": [],
     }

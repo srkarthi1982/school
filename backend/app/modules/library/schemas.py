@@ -45,6 +45,12 @@ class LibraryMaterialUpdate(BaseModel):
     # pagesRead: Optional[int] = None
     # coverimage: Optional[bytes] = None
 
+
+class AircraftViewerLaunchRead(BaseModel):
+    material_id: int
+    title: str
+    viewer_url: str
+
 # --- Library Material User Progress ---
 
 

@@ -24,6 +24,7 @@ import TopLoadingBar from './infra/shared/components/TopLoadingBar'
 import VirtualClassroomDetailPage from './modules/communication-reporting/virtual-classroom/VirtualClassroomDetailPage'
 import VirtualClassroomLivePage from './modules/communication-reporting/virtual-classroom/VirtualClassroomLivePage'
 import FileViewer from './modules/course-management/library/panel/FileViewer'
+import AircraftViewerPage from './modules/course-management/library/panel/AircraftViewerPage'
 
 const allRoutes = flattenRoutes(MENU_CONFIG)
 
@@ -105,6 +106,14 @@ export default function App() {
             element={
               <ErrorBoundary>
                 <FileViewer />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/course-management/library/aircraft-viewer/:materialId"
+            element={
+              <ErrorBoundary>
+                <AircraftViewerPage />
               </ErrorBoundary>
             }
           />

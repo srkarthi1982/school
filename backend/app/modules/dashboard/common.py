@@ -1,9 +1,22 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from sqlalchemy import select, func, distinct
+from sqlalchemy import case, select, func, distinct
 from sqlalchemy.orm import Session
 
 from .schemas import DashboardFilterState
+from .policy import (
+    ACTIVE_COURSE_INSTANCE_STATUSES,
+    DASHBOARD_ALERT_LIMIT,
+    DASHBOARD_ALERT_SOURCE_SCAN_LIMIT,
+    classify_student_risk,
+    configured_pass_percentage,
+    course_schedule_delay_days,
+    date_range_start,
+    failure_percentage,
+    score_percentage,
+    utc_now,
+)
+from .query import apply_course_instance_scope
 from app.modules.class_session.models import ClassSession
 from app.modules.course.models import (
     CourseEnrollment,
@@ -17,7 +30,15 @@ from app.modules.course_selection_schedule.lesson_content_models import (
     CourseSelectionLessonRelease,
 )
 from app.modules.evaluation.models import EvaluationLessonQuiz
+from app.modules.course_master.models import CourseMaster
 from app.modules.it_support.models import Ticket
+from app.modules.course_selection_info.models import (
+    CourseSelectionInfoLessonCreationLesson,
+)
+from app.modules.course_selection_material.models import (
+    CourseSelectionMaterialFile,
+    CourseSelectionMaterialUserProgress,
+)
 from app.modules.profile.models import Profile
 from app.modules.quiz_bank.models import QuizAttempt
 
@@ -30,36 +51,13 @@ from app.modules.quiz_bank.models import QuizAttempt
 
 def _date_range_start(params: DashboardFilterState | None):
     """Return the UTC datetime start of the selected date range, or None."""
-    if not params or params.dateRange == "all":
-        return None
-    now = datetime.utcnow()
-    if params.dateRange == "24h":
-        return now - timedelta(hours=24)
-    if params.dateRange == "7d":
-        return now - timedelta(days=7)
-    if params.dateRange == "30d":
-        return now - timedelta(days=30)
-    return None
+    return date_range_start(params.dateRange) if params else None
 
 
 def _apply_course_filters(stmt, params: DashboardFilterState | None):
     """Apply courseInstance / courseVersion / instructor filters to a statement
     built on CourseInstance."""
-    from app.modules.course_master.models import CourseMaster
-
-    if not params:
-        return stmt
-    if params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-    if params.courseVersion != "all":
-        stmt = stmt.join(CourseMaster, CourseInstance.master_id == CourseMaster.id).where(
-            CourseMaster.ctp_version == params.courseVersion
-        )
-    if params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-    return stmt
+    return apply_course_instance_scope(stmt, params)
 
 
 # ---------------------------------------------------------------------------
@@ -79,151 +77,370 @@ def _alert_id(prefix: str, key) -> str:
     return f"{prefix}-{key}"
 
 
-def get_alerts(db: Session, params: DashboardFilterState = None) -> list[dict]:
-    """Return recent operational alerts derived from real data.
+def get_alert_capability_section() -> dict:
+    """Describe request-time alert availability without emitting fake alerts."""
+    capabilities = (
+        ("001", "Flight evaluation missing", "Unsupported", "No flight-session/evaluation relationship"),
+        ("002", "Quiz score below threshold", "Supported", "Latest valid attempt per student, lesson, and instance"),
+        ("003", "Class failure above 40%", "Supported", "Latest eligible attempt per student; strictly greater than 40%"),
+        ("004", "Repeated lesson duration overrun", "Unsupported", "Generic sessions have no course or lesson relationship"),
+        ("005", "Material completion with low score", "Supported", "Same student, lesson, and instance; completed page progress"),
+        ("006", "Flight booking unconfirmed", "Unsupported", "No flight booking confirmation model"),
+        ("007", "External instructor unconfirmed", "Unsupported", "No external invitation/confirmation model"),
+        ("008", "Student export file not ready", "Unsupported", "No export-readiness workflow"),
+        ("009", "Approved instance past planned end", "Partially supported", "Schedule delay only; no actual course-start timestamp"),
+    )
+    return {
+        "id": "dashboard-alert-capabilities",
+        "title": "Dynamic alert availability",
+        "items": [
+            {
+                "id": f"alert-capability-{code}",
+                "label": f"ALERT-{code} · {label}",
+                "value": status,
+                "helperText": reason,
+                "tone": "info" if status != "Supported" else "success",
+            }
+            for code, label, status, reason in capabilities
+        ],
+    }
 
-    Sources (per the document's alert examples):
-      - Open IT-support tickets (recent activity)
-      - Class sessions delayed beyond the operating threshold
-      - Lessons where >40% of the cohort failed the quiz
-      - Quiz attempts pending manual evaluation (essay questions)
+
+def get_alerts(
+    db: Session,
+    params: DashboardFilterState = None,
+) -> list[dict]:
+    """Calculate supported alert types during the current dashboard request.
+
+    Alerts are deterministic projections: they are not persisted, acknowledged,
+    scheduled, escalated, or derived from unrelated support tickets.
     """
     alerts: list[dict] = []
-    now = datetime.utcnow()
+    now = utc_now()
     window = _date_range_start(params) or (now - timedelta(hours=24))
 
-    # 1. Recent open IT-support tickets (submitted/viewed)
-    ticket_stmt = (
-        select(Ticket.id, Ticket.title, Ticket.description, Ticket.status, Ticket.updated_at)
-        .where(
-            Ticket.status.in_(("submitted", "viewed")),
-            Ticket.updated_at >= window,
-        )
-        .order_by(Ticket.updated_at.desc())
-        .limit(5)
-    )
-    for row in db.execute(ticket_stmt).all():
-        alerts.append({
-            "id": _alert_id("alert-ticket", row.id),
-            "title": row.title or "Support ticket",
-            "description": (row.description or "")[:160],
-            "time": (row.updated_at or now).strftime("%H:%M"),
-            "tone": "warning",
-        })
-
-    # 2. Class sessions delayed beyond the operating threshold (> 5 min late)
-    delay_stmt = (
+    # ALERT-002/003 use the latest valid attempt per student, lesson and
+    # delivery instance. Matching release.student_id to the attempt user's
+    # profile prevents one attempt joining every targeted release row.
+    attempt_stmt = (
         select(
-            ClassSession.id,
-            ClassSession.title,
-            ClassSession.scheduled_start,
-            ClassSession.actual_start,
-        )
-        .where(
-            ClassSession.actual_start.is_not(None),
-            func.extract("epoch", ClassSession.actual_start - ClassSession.scheduled_start) > 300,
-            ClassSession.scheduled_start >= window,
-        )
-        .order_by(ClassSession.scheduled_start.desc())
-        .limit(5)
-    )
-    if params and params.instructor != "all":
-        delay_stmt = delay_stmt.join(
-            Profile, Profile.user_id == ClassSession.host_user_id
-        ).where(Profile.id == int(params.instructor))
-    for row in db.execute(delay_stmt).all():
-        alerts.append({
-            "id": _alert_id("alert-delay", row.id),
-            "title": f"Session delayed: {row.title}",
-            "description": "Session started beyond the operating threshold.",
-            "time": (row.scheduled_start or now).strftime("%H:%M"),
-            "tone": "danger",
-        })
-
-    # 3. Lessons where >40% of the cohort failed the quiz
-    fail_subq = (
-        select(
+            QuizAttempt.id,
+            QuizAttempt.student_id.label("student_user_id"),
+            QuizAttempt.score,
+            QuizAttempt.max_score,
+            QuizAttempt.submitted_at,
+            Profile.id.label("profile_id"),
+            Profile.first_name.label("student_name"),
             CourseSelectionLessonRelease.lesson_id,
             CourseSelectionLessonRelease.course_instance_id,
-            func.count(QuizAttempt.id).label("total"),
-            func.count(
-                distinct(
-                    func.nullif(
-                        (QuizAttempt.score < EvaluationLessonQuiz.pass_mark), False
-                    )
-                )
-            ).label("failed"),
+            CourseSelectionInfoLessonCreationLesson.lesson_title,
+            CourseInstance.title.label("instance_title"),
+            CourseMaster.title.label("course_title"),
+            CourseMaster.ctp_version,
+            EvaluationLessonQuiz.pass_mark,
+            EvaluationLessonQuiz.max_mark,
+            EvaluationLessonQuiz.pass_percentage,
         )
-        .join(QuizAttempt, QuizAttempt.quiz_id == CourseSelectionLessonRelease.content_id)
-        .join(EvaluationLessonQuiz, EvaluationLessonQuiz.quiz_id == QuizAttempt.quiz_id)
+        .select_from(QuizAttempt)
+        .join(Profile, Profile.user_id == QuizAttempt.student_id)
+        .join(
+            CourseSelectionLessonRelease,
+            (CourseSelectionLessonRelease.content_id == QuizAttempt.quiz_id)
+            & (CourseSelectionLessonRelease.student_id == Profile.id),
+        )
+        .join(
+            CourseInstance,
+            CourseInstance.id
+            == CourseSelectionLessonRelease.course_instance_id,
+        )
+        .join(CourseMaster, CourseMaster.id == CourseInstance.master_id)
+        .join(
+            EvaluationLessonQuiz,
+            (EvaluationLessonQuiz.quiz_id == QuizAttempt.quiz_id)
+            & (EvaluationLessonQuiz.course_master_id == CourseMaster.id)
+            & (
+                EvaluationLessonQuiz.lesson_id
+                == CourseSelectionLessonRelease.lesson_id
+            ),
+        )
+        .join(
+            CourseSelectionInfoLessonCreationLesson,
+            CourseSelectionInfoLessonCreationLesson.id
+            == CourseSelectionLessonRelease.lesson_id,
+        )
         .where(
             CourseSelectionLessonRelease.content_type == "quiz",
-            EvaluationLessonQuiz.pass_mark > 0,
+            QuizAttempt.max_score > 0,
             QuizAttempt.submitted_at >= window,
         )
+        .order_by(QuizAttempt.submitted_at.desc(), QuizAttempt.id.desc())
+        .limit(DASHBOARD_ALERT_SOURCE_SCAN_LIMIT)
     )
-    if params and params.courseInstance != "all":
-        fail_subq = fail_subq.where(
-            CourseSelectionLessonRelease.course_instance_id == int(params.courseInstance)
-        )
-    if params and params.instructor != "all":
-        fail_subq = (
-            fail_subq.join(
-                CourseInstance,
-                CourseSelectionLessonRelease.course_instance_id == CourseInstance.id,
-            )
-            .join(
-                course_instructors,
-                course_instructors.c.course_instance_id == CourseInstance.id,
-            )
-            .where(course_instructors.c.instructor_id == int(params.instructor))
-        )
-    fail_subq = fail_subq.group_by(
-        CourseSelectionLessonRelease.lesson_id, CourseSelectionLessonRelease.course_instance_id
-    ).subquery()
-    fail_stmt = (
-        select(fail_subq.c.lesson_id, fail_subq.c.course_instance_id, fail_subq.c.total, fail_subq.c.failed)
-        .where(fail_subq.c.failed * 100 >= fail_subq.c.total * 40)
-        .where(fail_subq.c.total > 0)
-        .limit(5)
+    attempt_stmt = apply_course_instance_scope(
+        attempt_stmt, params, master_joined=True
     )
-    for row in db.execute(fail_stmt).all():
+    if params and params.lesson != "all":
+        attempt_stmt = attempt_stmt.where(
+            CourseSelectionLessonRelease.lesson_id == int(params.lesson)
+        )
+    if params and params.student != "all":
+        attempt_stmt = attempt_stmt.where(Profile.id == int(params.student))
+    if params and params.evaluationType != "all":
+        attempt_stmt = attempt_stmt.where(
+            EvaluationLessonQuiz.assessment_type == params.evaluationType
+        )
+
+    latest: dict[tuple[int, int, int], object] = {}
+    for row in db.execute(attempt_stmt).all():
+        latest.setdefault(
+            (row.profile_id, row.lesson_id, row.course_instance_id), row
+        )
+
+    # Completed page-progress records can be correlated to outcomes only when
+    # the same student, lesson, and delivery instance are shared.
+    material_stmt = (
+        select(
+            Profile.id.label("profile_id"),
+            CourseSelectionMaterialFile.id.label("material_id"),
+            CourseSelectionMaterialFile.filename,
+            CourseSelectionMaterialFile.lesson_id,
+            CourseSelectionMaterialFile.course_instance_id,
+        )
+        .select_from(CourseSelectionMaterialUserProgress)
+        .join(
+            CourseSelectionMaterialFile,
+            CourseSelectionMaterialFile.id
+            == CourseSelectionMaterialUserProgress.file_id,
+        )
+        .join(
+            Profile,
+            Profile.user_id == CourseSelectionMaterialUserProgress.user_id,
+        )
+        .join(
+            CourseInstance,
+            CourseInstance.id
+            == CourseSelectionMaterialFile.course_instance_id,
+        )
+        .join(CourseMaster, CourseMaster.id == CourseInstance.master_id)
+        .where(
+            CourseSelectionMaterialUserProgress.total_pages > 0,
+            CourseSelectionMaterialUserProgress.pages_read
+            >= CourseSelectionMaterialUserProgress.total_pages,
+        )
+    )
+    material_stmt = apply_course_instance_scope(
+        material_stmt, params, master_joined=True
+    )
+    if params and params.student != "all":
+        material_stmt = material_stmt.where(Profile.id == int(params.student))
+    if params and params.lesson != "all":
+        material_stmt = material_stmt.where(
+            CourseSelectionMaterialFile.lesson_id == int(params.lesson)
+        )
+    if params and params.material != "all":
+        material_stmt = material_stmt.where(
+            CourseSelectionMaterialFile.id == params.material
+        )
+    completed_materials: dict[tuple[int, int, int], list[object]] = {}
+    for material in db.execute(
+        material_stmt.distinct().order_by(
+            Profile.id,
+            CourseSelectionMaterialFile.lesson_id,
+            CourseSelectionMaterialFile.course_instance_id,
+            CourseSelectionMaterialFile.id,
+        ).limit(DASHBOARD_ALERT_SOURCE_SCAN_LIMIT)
+    ).all():
+        completed_materials.setdefault(
+            (
+                material.profile_id,
+                material.lesson_id,
+                material.course_instance_id,
+            ),
+            [],
+        ).append(material)
+
+    grouped: dict[tuple[int, int], list[tuple[object, float, float]]] = {}
+    for row in latest.values():
+        observed = score_percentage(row.score, row.max_score)
+        if observed is None:
+            continue
+        threshold = configured_pass_percentage(
+            pass_mark=row.pass_mark,
+            configured_maximum=row.max_mark,
+            pass_percentage=row.pass_percentage,
+        )
+        grouped.setdefault(
+            (row.lesson_id, row.course_instance_id), []
+        ).append((row, observed, threshold))
+        if observed < threshold:
+            alerts.append({
+                "id": _alert_id(
+                    "alert-002",
+                    f"{row.profile_id}-{row.lesson_id}-{row.course_instance_id}",
+                ),
+                "code": "ALERT-002",
+                "title": f"Quiz score below threshold: {row.lesson_title}",
+                "description": (
+                    f"{row.student_name or 'Student'} scored {observed:.1f}% "
+                    f"against a {threshold:.1f}% threshold."
+                ),
+                "severity": "high",
+                "dashboardRole": params.report_type if params else "leadership",
+                "entityType": "quiz-attempt",
+                "entityIdentifier": str(row.id),
+                "course": row.course_title,
+                "courseVersion": row.ctp_version,
+                "courseInstance": row.instance_title,
+                "student": row.student_name,
+                "lesson": row.lesson_title,
+                "currentValue": f"{observed:.1f}%",
+                "threshold": f"{threshold:.1f}%",
+                "generatedTimestamp": now.isoformat(),
+                "recommendedAction": "Review the lesson and assigned material.",
+                "time": now.strftime("%H:%M"),
+                "tone": "danger",
+            })
+            for material in completed_materials.get(
+                (row.profile_id, row.lesson_id, row.course_instance_id), []
+            ):
+                alerts.append({
+                    "id": _alert_id(
+                        "alert-005",
+                        f"{row.profile_id}-{material.material_id}-{row.lesson_id}-{row.course_instance_id}",
+                    ),
+                    "code": "ALERT-005",
+                    "title": f"Completed material with low score: {row.lesson_title}",
+                    "description": (
+                        f"{row.student_name or 'Student'} completed "
+                        f"{material.filename} but scored {observed:.1f}%."
+                    ),
+                    "severity": "warning",
+                    "dashboardRole": params.report_type if params else "leadership",
+                    "entityType": "material-quiz-correlation",
+                    "entityIdentifier": (
+                        f"{material.material_id}:{row.id}"
+                    ),
+                    "course": row.course_title,
+                    "courseVersion": row.ctp_version,
+                    "courseInstance": row.instance_title,
+                    "student": row.student_name,
+                    "lesson": row.lesson_title,
+                    "currentValue": f"Material complete; score {observed:.1f}%",
+                    "threshold": f"Quiz threshold {threshold:.1f}%",
+                    "generatedTimestamp": now.isoformat(),
+                    "recommendedAction": "Review the material and lesson with the student.",
+                    "time": now.strftime("%H:%M"),
+                    "tone": "warning",
+                })
+
+    for (lesson_id, instance_id), observations in grouped.items():
+        failed = sum(observed < threshold for _, observed, threshold in observations)
+        total = len(observations)
+        percentage = failure_percentage(total, failed)
+        if total and percentage > 40 and (
+            not params or params.report_type != "student"
+        ):
+            row = observations[0][0]
+            alerts.append({
+                "id": _alert_id("alert-003", f"{lesson_id}-{instance_id}"),
+                "code": "ALERT-003",
+                "title": f"Class failure above 40%: {row.lesson_title}",
+                "description": (
+                    f"{failed} of {total} students' latest eligible attempts "
+                    f"failed ({percentage:.1f}%)."
+                ),
+                "severity": "critical",
+                "dashboardRole": params.report_type if params else "leadership",
+                "entityType": "lesson-course-instance",
+                "entityIdentifier": f"{lesson_id}:{instance_id}",
+                "course": row.course_title,
+                "courseVersion": row.ctp_version,
+                "courseInstance": row.instance_title,
+                "lesson": row.lesson_title,
+                "currentValue": f"{failed}/{total} ({percentage:.1f}%)",
+                "threshold": ">40%",
+                "generatedTimestamp": now.isoformat(),
+                "recommendedAction": "Review lesson delivery and assign targeted remediation.",
+                "time": now.strftime("%H:%M"),
+                "tone": "danger",
+            })
+
+    # ALERT-009: approved delivery instances that have not started after their
+    # planned start or remain approved beyond their planned end. The schema has
+    # no actual course-start timestamp, so this is explicitly schedule delay.
+    today = now.date()
+    delay_stmt = (
+        select(
+            CourseInstance.id,
+            CourseInstance.title,
+            CourseInstance.start_date,
+            CourseInstance.end_date,
+            CourseInstance.status,
+            CourseMaster.title.label("course_title"),
+            CourseMaster.ctp_version,
+        )
+        .select_from(CourseInstance)
+        .join(CourseMaster, CourseMaster.id == CourseInstance.master_id)
+        .where(
+            func.lower(CourseInstance.status).in_(
+                ACTIVE_COURSE_INSTANCE_STATUSES
+            ),
+            CourseInstance.end_date.is_not(None),
+            CourseInstance.end_date < today,
+        )
+    )
+    delay_stmt = apply_course_instance_scope(
+        delay_stmt, params, master_joined=True
+    )
+    delay_rows = (
+        []
+        if params and params.report_type == "student"
+        else db.execute(
+            delay_stmt.order_by(
+                CourseInstance.end_date.asc(), CourseInstance.id.asc()
+            ).limit(DASHBOARD_ALERT_LIMIT)
+        ).all()
+    )
+    for row in delay_rows:
+        days = course_schedule_delay_days(
+            status=row.status, planned_end=row.end_date, today=today
+        )
+        if days is None:
+            continue
         alerts.append({
-            "id": _alert_id("alert-fail", f"{row.lesson_id}-{row.course_instance_id}"),
-            "title": f"High failure rate on lesson {row.lesson_id}",
-            "description": f"{row.failed} of {row.total} attempts failed the quiz.",
+            "id": _alert_id("alert-009", row.id),
+            "code": "ALERT-009",
+            "title": f"Approved instance past planned end: {row.title}",
+            "description": (
+                f"Planned end {row.end_date.isoformat()} passed by {days} day(s); "
+                f"status remains {row.status}."
+            ),
+            "severity": "high",
+            "dashboardRole": params.report_type if params else "leadership",
+            "entityType": "course-instance",
+            "entityIdentifier": str(row.id),
+            "course": row.course_title,
+            "courseVersion": row.ctp_version,
+            "courseInstance": row.title,
+            "currentValue": f"{days} day(s) past planned end",
+            "threshold": "Planned end date passed",
+            "generatedTimestamp": now.isoformat(),
+            "recommendedAction": "Review the delivery status and planned end date.",
             "time": now.strftime("%H:%M"),
             "tone": "danger",
         })
 
-    # 4. Quiz attempts pending manual evaluation (essay questions)
-    pending_eval_stmt = (
-        select(func.count(QuizAttempt.id))
-        .join(
-            CourseSelectionLessonRelease,
-            QuizAttempt.quiz_id == CourseSelectionLessonRelease.content_id,
-        )
-        .where(
-            CourseSelectionLessonRelease.content_type == "quiz",
-            QuizAttempt.has_essay.is_(True),
-            QuizAttempt.submitted_at >= window,
-        )
+    ordered = sorted(
+        {alert["id"]: alert for alert in alerts}.values(),
+        key=lambda alert: (
+            {"critical": 0, "high": 1, "warning": 2, "info": 3}[
+                alert["severity"]
+            ],
+            alert["code"],
+            alert["id"],
+        ),
     )
-    if params and params.courseInstance != "all":
-        pending_eval_stmt = pending_eval_stmt.where(
-            CourseSelectionLessonRelease.course_instance_id == int(params.courseInstance)
-        )
-    pending_eval_count = db.execute(pending_eval_stmt).scalar() or 0
-    if pending_eval_count > 0:
-        alerts.append({
-            "id": "alert-pending-eval",
-            "title": "Evaluations pending review",
-            "description": f"{pending_eval_count} quiz attempts await manual grading.",
-            "time": now.strftime("%H:%M"),
-            "tone": "warning",
-        })
-
-    return alerts
+    return ordered[:DASHBOARD_ALERT_LIMIT]
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +456,7 @@ def get_week_lessons(db: Session, params: DashboardFilterState = None) -> list[d
     The "trend" compares the average score in the selected date range against
     the average score in the preceding equal-length window (improvement = +).
     """
-    now = datetime.utcnow()
+    now = utc_now()
     start = _date_range_start(params) or (now - timedelta(days=7))
     span = now - start
     prev_start = start - span
@@ -280,6 +497,7 @@ def get_week_lessons(db: Session, params: DashboardFilterState = None) -> list[d
     )
 
     # Apply filters to both subqueries
+    scoped_subqueries = []
     for subq in (cur_subq, prev_subq):
         if params and params.courseInstance != "all":
             subq = subq.where(
@@ -305,11 +523,12 @@ def get_week_lessons(db: Session, params: DashboardFilterState = None) -> list[d
             subq = subq.join(Profile, Profile.user_id == QuizAttempt.student_id).where(
                 Profile.id == int(params.student)
             )
+        scoped_subqueries.append(subq)
 
-    cur_subq = cur_subq.group_by(
+    cur_subq = scoped_subqueries[0].group_by(
         CourseSelectionLessonRelease.lesson_id, CourseSelectionLessonRelease.course_instance_id
     ).subquery()
-    prev_subq = prev_subq.group_by(
+    prev_subq = scoped_subqueries[1].group_by(
         CourseSelectionLessonRelease.lesson_id, CourseSelectionLessonRelease.course_instance_id
     ).subquery()
 
@@ -366,7 +585,7 @@ def get_risk_statuses(db: Session, params: DashboardFilterState = None) -> list[
     (pass/fail), lesson completion progress, and attendance (present ratio).
     Each row maps a student profile to a risk level with a next-step.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     start = _date_range_start(params) or (now - timedelta(days=30))
 
     # Per-student aggregate: avg quiz score, attempt count, completed lessons
@@ -376,7 +595,12 @@ def get_risk_statuses(db: Session, params: DashboardFilterState = None) -> list[
     quiz_subq = (
         select(
             QuizAttempt.student_id.label("uid"),
-            func.avg(QuizAttempt.score).label("avg_score"),
+            func.avg(
+                case(
+                    (QuizAttempt.max_score > 0, QuizAttempt.score * 100.0 / QuizAttempt.max_score),
+                    else_=None,
+                )
+            ).label("avg_score"),
             func.count(QuizAttempt.id).label("attempts"),
         )
         .join(
@@ -404,8 +628,8 @@ def get_risk_statuses(db: Session, params: DashboardFilterState = None) -> list[
         select(
             Attendance.student_id.label("uid"),
             func.count(Attendance.id).label("att_total"),
-            func.count(
-                distinct(func.nullif((Attendance.status_id == AttendanceStatus.id) & (AttendanceStatus.code == present_code), False))
+            func.sum(
+                case((AttendanceStatus.code == present_code, 1), else_=0)
             ).label("att_present"),
         )
         .join(AttendanceStatus, Attendance.status_id == AttendanceStatus.id, isouter=True)
@@ -447,17 +671,12 @@ def get_risk_statuses(db: Session, params: DashboardFilterState = None) -> list[
         attempts = int(r.attempts or 0)
         att_total = int(r.att_total or 0)
         att_present = int(r.att_present or 0)
-        present_ratio = (att_present / att_total) if att_total > 0 else None
-
-        # Risk classification (document's logic, approximated)
-        if avg is not None and avg < 50 and (present_ratio is not None and present_ratio < 0.5):
-            level, status, next_step, tone = "Critical", "Failed evaluation / poor attendance", "Immediate intervention required", "danger"
-        elif avg is not None and avg < 50:
-            level, status, next_step, tone = "High", "Low evaluation score", "Schedule remedial training", "warning"
-        elif (avg is not None and avg < 70) or (present_ratio is not None and present_ratio < 0.75):
-            level, status, next_step, tone = "Medium", "Low quiz score / low engagement", "Monitor and review progress", "warning"
-        else:
-            level, status, next_step, tone = "Low", "On track", "Continue regular monitoring", "success"
+        attendance_percent = (
+            (att_present / att_total) * 100 if att_total > 0 else None
+        )
+        level, status, next_step, tone = classify_student_risk(
+            avg, attendance_percent
+        )
 
         items.append({
             "id": f"risk-{r.id}",
@@ -483,7 +702,7 @@ def get_pending_actions(db: Session, params: DashboardFilterState = None) -> lis
       - Quiz attempts pending manual evaluation (has_essay)
     """
     actions: list[dict] = []
-    now = datetime.utcnow()
+    now = utc_now()
     window = _date_range_start(params) or (now - timedelta(days=7))
 
     # 1. Open tickets

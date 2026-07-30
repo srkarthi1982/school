@@ -1,5 +1,5 @@
 import { useShallow } from "zustand/react/shallow";
-import { useDashboardStore } from "../store";
+import { type AlertItem, useDashboardStore } from "../store";
 import { Button } from "./common";
 import { FilterBar } from "./FilterBar";
 import { MainGrid } from "./layout/MainGrid";
@@ -11,14 +11,19 @@ import { DashboardDetailSections } from "./layout/DashboardDetailSections";
 export function toNumber(value: string) {
   const parsed = Number.parseFloat(value.replace(/[^0-9.]/g, ''));
 
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 0;
 }
+const isUnavailable = (value?: string) => !value || value.trim().toUpperCase() === 'N/A';
 const toneLabels: Record<string, string> = {
   success: 'Success',
   warning: 'Warning',
   danger: 'Critical',
   info: 'Info',
 };
+const alertTone = (tone: string): 'success' | 'warning' | 'danger' | 'info' =>
+  tone === 'success' || tone === 'warning' || tone === 'danger' || tone === 'info'
+    ? tone
+    : 'info';
 export default function DashboardView() {
   const { resetFilters, setFilters, filterOptions, filters, dashboardInfo, loading, error } = useDashboardStore(
     useShallow((s) => ({
@@ -74,11 +79,19 @@ export default function DashboardView() {
               variant={'bar'}
             />
             <div className="rounded-lg border border-slate-200 bg-white p-5">
-              <Gauge
-                label={dashboardInfo?.card3?.label}
-                statusLabel={dashboardInfo?.card3?.statusLabel}
-                value={toNumber(dashboardInfo?.card3?.value)}
-              />
+              {isUnavailable(dashboardInfo?.card3?.value) ? (
+                <StatCard
+                  label={dashboardInfo?.card3?.label}
+                  statusLabel={dashboardInfo?.card3?.statusLabel}
+                  value="N/A"
+                />
+              ) : (
+                <Gauge
+                  label={dashboardInfo?.card3?.label}
+                  statusLabel={dashboardInfo?.card3?.statusLabel}
+                  value={toNumber(dashboardInfo?.card3?.value)}
+                />
+              )}
             </div>
             <KpiCard
               helperText={dashboardInfo?.card4?.helperText}
@@ -100,34 +113,54 @@ export default function DashboardView() {
               statusLabel={dashboardInfo?.strip2?.statusLabel}
             />
             <div className="rounded-lg border border-slate-200 bg-white p-5">
-              <ProgressCircle
-                label={dashboardInfo.strip3.label}
-                value={toNumber(dashboardInfo.strip3.value)}
-                statusLabel={dashboardInfo?.strip3?.statusLabel}
-              />
+              {isUnavailable(dashboardInfo?.strip3?.value) ? (
+                <StatCard
+                  label={dashboardInfo?.strip3?.label}
+                  statusLabel={dashboardInfo?.strip3?.statusLabel}
+                  value="N/A"
+                />
+              ) : (
+                <ProgressCircle
+                  label={dashboardInfo.strip3.label}
+                  value={toNumber(dashboardInfo.strip3.value)}
+                  statusLabel={dashboardInfo?.strip3?.statusLabel}
+                />
+              )}
             </div>
           </MainGrid>
         </div>
         <AlertPanel className="xl:sticky xl:top-5" title={'Dashboard Alerts'}>
-          {dashboardInfo.alerts.map((alert) => (
+          {(dashboardInfo.alerts as AlertItem[]).map((alert) => (
             <AlertCard
               key={alert.id}
-              toneLabel={toneLabels[alert.tone as string]}
+              toneLabel={`${alert.code} · ${toneLabels[alert.tone] ?? alert.severity}`}
               time={alert.time}
               title={alert.title}
-              tone={alert.tone as any}
+              tone={alertTone(alert.tone)}
             >
-              {alert.description}
+              <span className="grid gap-1">
+                <span>{alert.description}</span>
+                {(alert.currentValue || alert.threshold) && (
+                  <span>
+                    {alert.currentValue && `Current: ${alert.currentValue}`}
+                    {alert.currentValue && alert.threshold && ' · '}
+                    {alert.threshold && `Threshold: ${alert.threshold}`}
+                  </span>
+                )}
+                {alert.recommendedAction && (
+                  <span>Action: {alert.recommendedAction}</span>
+                )}
+              </span>
             </AlertCard>
           ))}
           {dashboardInfo.alerts.length === 0 &&
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600">
-              No Dashboard alerts
+              No current request-time dashboard alerts
             </div>
           }
         </AlertPanel>
       </div>
-      <DashboardDetailSections details={dashboardInfo.details as any} />
+      <DashboardDetailSections details={dashboardInfo.details} />
     </div>
   );
 }

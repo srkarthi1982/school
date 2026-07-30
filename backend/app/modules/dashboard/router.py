@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from .schemas import DashboardSummaryResponse, DashboardResponse, DashboardFilterState
+from .policy import scope_role_filters
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import get_current_user, get_user_permission_codes
@@ -25,6 +26,7 @@ from .leadership import (
     get_average_score,
     get_active_courses_section,
     get_completed_courses_section,
+    get_completed_courses_by_version_sections,
     get_student_pass_fail_rate_section,
     get_training_delays_section,
     get_flight_simulator_hours_section,
@@ -32,6 +34,7 @@ from .leadership import (
     get_material_effectiveness_section,
     get_evaluation_compliance_section,
     get_course_completion_rate_section,
+    get_instructor_workload_section as get_leadership_instructor_workload_section,
     get_repeated_weak_lessons_section,
     get_api_export_readiness_section,
 )
@@ -104,6 +107,7 @@ _REPORT_PERMISSIONS = {
 }
   
 from .common import (
+    get_alert_capability_section,
     get_alerts,
     get_week_lessons,
     get_risk_statuses,
@@ -125,7 +129,7 @@ def get_leadership(db: Session = Depends(get_db), user: "User" = Depends(get_cur
             "strip1": get_completion_rate(db, params),
             "strip2": get_attendance_rate(db, params),
             "strip3": get_average_score(db, params),
-            "alerts": get_alerts(db),            
+            "alerts": get_alerts(db, params),
             "details": {
                 "kpiCategories": get_kpi_categories(db, user, params),
                 "riskStatuses": get_risk_statuses(db, params),
@@ -139,6 +143,7 @@ def get_leadership(db: Session = Depends(get_db), user: "User" = Depends(get_cur
                         "items": [
                             get_active_courses_section(db, params),
                             get_completed_courses_section(db, params),
+                            *get_completed_courses_by_version_sections(db, params),
                             get_student_pass_fail_rate_section(db, params),
                             get_training_delays_section(db, params),
                             get_flight_simulator_hours_section(db, params),
@@ -146,11 +151,12 @@ def get_leadership(db: Session = Depends(get_db), user: "User" = Depends(get_cur
                             get_material_effectiveness_section(db, params),
                             get_evaluation_compliance_section(db, params),
                             get_course_completion_rate_section(db, params),
-                            get_instructor_workload_section(db, params),
+                            get_leadership_instructor_workload_section(db, params),
                             get_repeated_weak_lessons_section(db, params),
                             get_api_export_readiness_section(db, params),
                         ]
                     },
+                    get_alert_capability_section(),
                 ]
             },
         },
@@ -171,7 +177,7 @@ def get_sat(db: Session = Depends(get_db), user: "User" = Depends(get_current_us
             "strip1": get_sat_pass_rate_strip(db, params),
             "strip2": get_sat_pending_reviews_strip(db, params),
             "strip3": get_sat_average_score_strip(db, params),
-            "alerts": get_alerts(db),
+            "alerts": get_alerts(db, params),
             "details": {
                 "kpiCategories": get_kpi_categories(db, user, params),
                 "riskStatuses": get_risk_statuses(db, params),
@@ -193,6 +199,7 @@ def get_sat(db: Session = Depends(get_db), user: "User" = Depends(get_current_us
                             get_sat_courses_requiring_revision_item(db, params)
                         ]
                     },
+                    get_alert_capability_section(),
                 ]
             },
         },
@@ -203,6 +210,12 @@ def get_instructor(db: Session = Depends(get_db), user: "User" = Depends(get_cur
     """
     Return the full dashboard information for the instructor view.
     """
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        raise HTTPException(status_code=403, detail="Instructor profile is required")
+    params = scope_role_filters(
+        params, role="instructor", profile_id=profile.id
+    )
     return {
       "filterOptions": get_filter_options(db=db, user=user, params=params),
       "dashboardInfo": {
@@ -213,13 +226,13 @@ def get_instructor(db: Session = Depends(get_db), user: "User" = Depends(get_cur
         "strip1": get_active_instructors_strip(db, params),
         "strip2": get_lessons_delivered_strip(db, params),
         "strip3": get_completion_strip(db, params),
-        "alerts": get_alerts(db),
+        "alerts": get_alerts(db, params),
         "details": {
             "kpiCategories": get_kpi_categories(db, user, params),
             "riskStatuses": get_risk_statuses(db, params),
             "weakLessons": get_week_lessons(db, params),
-            "pendingActions": get_pending_actions(db, params),
-            "exportReadiness": get_export_readiness(db, params),
+            "pendingActions": [],
+            "exportReadiness": [],
             "coverageSections": [
                 {
                     "id": "instructor-pdf-coverage",
@@ -231,10 +244,12 @@ def get_instructor(db: Session = Depends(get_db), user: "User" = Depends(get_cur
                         get_weak_students_by_lesson_item(db, params),
                         get_students_missing_material_item(db, params),
                         get_upcoming_flight_bookings_item(db, params),
+                        get_quiz_results_item(db, params),
                         get_external_instructor_coordination_alerts_item(db, params),
                         get_course_progress_status_item(db, params),
                     ]
                 },
+                get_alert_capability_section(),
             ]
         },
       },
@@ -245,23 +260,27 @@ def get_student(db: Session = Depends(get_db), user: "User" = Depends(get_curren
     """
     Return the full dashboard information for the student view.
     """
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        raise HTTPException(status_code=403, detail="Student profile is required")
+    params = scope_role_filters(params, role="student", profile_id=profile.id)
     return {
         "filterOptions": get_filter_options(db=db, user=user, params=params),
         "dashboardInfo": {
             "card1": get_student_study_streak_item(db, user, params),
-            "card2": get_student_usage_volume_card(db, params),
+            "card2": get_student_usage_volume_card(db, user, params),
             "card3": get_student_goal_progress_item(db, user, params),
             "card4": get_student_goal_progress_item(db, user, params),
             "strip1": get_student_completion_strip(db, user, params),
             "strip2": get_student_average_score_strip(db, user, params),
             "strip3": get_student_usage_rate_strip(db, user, params),
-            "alerts": get_alerts(db),
+            "alerts": get_alerts(db, params),
             "details": {
                 "kpiCategories": get_kpi_categories(db, user, params),
                 "riskStatuses": get_risk_statuses(db, params),
                 "weakLessons": get_week_lessons(db, params),
-                "pendingActions": get_pending_actions(db, params),
-                "exportReadiness": get_export_readiness(db, params),
+                "pendingActions": [],
+                "exportReadiness": [],
                 "coverageSections": [
                     {
                         "id": "student-001",
@@ -277,6 +296,7 @@ def get_student(db: Session = Depends(get_db), user: "User" = Depends(get_curren
                             get_student_course_progress_item(db, user, params),
                         ]                        
                     },
+                    get_alert_capability_section(),
                 ]
             },
         },

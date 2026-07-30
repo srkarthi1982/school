@@ -1,9 +1,10 @@
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile, File, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, UploadFile, File, WebSocket, WebSocketDisconnect, status
+from jose import jwt
 from fastapi.responses import FileResponse as FastAPIFileResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -31,8 +32,14 @@ from .schemas import (
     LibraryMaterialUserProgressRead,
     LibraryMaterialUserProgressUpdate,
     SummaryWebhookTask,
+    AircraftViewerLaunchRead,
 )
 from .services import _get_storage_backend
+from .aircraft_viewer_packages import (
+    delete_package,
+    parse_aircraft_viewer_metadata,
+    prepare_package,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +119,100 @@ def _to_read(material: LibraryMaterial, summary_ts: datetime | None = None) -> L
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@router.post("/aircraft-viewer/upload", response_model=LibraryMaterialRead)
+async def upload_aircraft_viewer(
+    file: UploadFile = File(...),
+    title: str = Form(...),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_permission(PermissionCode.LIBRARY_MANAGE)),
+):
+    """Import an Aircraft Viewer SFX as data. The uploaded executable is never run."""
+    source_filename = file.filename or ""
+    file_bytes = await file.read(settings.AIRCRAFT_VIEWER_PACKAGE_MAX_BYTES + 1)
+    prepared = await to_thread.run_sync(prepare_package, file_bytes, source_filename)
+    owner = current_user.full_name or current_user.username
+    try:
+        material = LibraryMaterial(
+            file_id=prepared.package_id,
+            file_url=f"aircraft-viewers/{prepared.package_id}",
+            file_name=source_filename,
+            content_type="application/vnd.microsoft.portable-executable",
+            file_size=len(file_bytes),
+            title=title.strip() or Path(source_filename).stem,
+            description=description,
+            category="General",
+            material_type="general",
+            version="1",
+            upload_date=datetime.now(),
+            folder="",
+            uploaded_by=owner,
+            approved_status="approved",
+            metadata_json=json.dumps(prepared.metadata),
+            totalPages=1,
+        )
+        db.add(material)
+        db.flush()
+        db.add(LibraryMaterialUserProgress(
+            user_id=current_user.id, material_id=material.id, pages_read=0
+        ))
+        db.commit()
+        db.refresh(material)
+        return material
+    except Exception:
+        db.rollback()
+        try:
+            delete_package(prepared.package_id)
+        except Exception:
+            logger.exception("Failed to clean Aircraft Viewer package %s", prepared.package_id)
+        raise
+
+
+@router.get(
+    "/aircraft-viewer/{material_id}",
+    response_model=AircraftViewerLaunchRead,
+)
+def get_aircraft_viewer_launch(
+    material_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_permission(PermissionCode.LIBRARY_READ)),
+):
+    material = _get_material_or_404(db, material_id)
+    if not _can_view(material, current_user.full_name, _user_perms(current_user)):
+        raise HTTPException(status_code=403, detail="You do not have access to this material")
+    metadata = parse_aircraft_viewer_metadata(material.metadata_json)
+    if material.material_type != "general" or metadata is None:
+        raise HTTPException(status_code=422, detail="Material is not an Aircraft Viewer package")
+    package_id = metadata["viewer_package_id"]
+    token = jwt.encode(
+        {
+            "sub": str(current_user.id),
+            "purpose": "aircraft_viewer",
+            "package_id": package_id,
+            "entrypoint": metadata["viewer_entrypoint"],
+            "exp": datetime.now(timezone.utc) + timedelta(
+                seconds=settings.AIRCRAFT_VIEWER_TOKEN_EXPIRE_SECONDS
+            ),
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+    response.set_cookie(
+        "aircraft_viewer_session",
+        token,
+        max_age=settings.AIRCRAFT_VIEWER_TOKEN_EXPIRE_SECONDS,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        path=f"/api/v1/aircraft-viewer/packages/{package_id}",
+    )
+    return AircraftViewerLaunchRead(
+        material_id=material.id,
+        title=material.title,
+        viewer_url=f"/api/v1/aircraft-viewer/packages/{package_id}/",
+    )
 
 @router.post("/upload", response_model=LibraryMaterialRead)
 async def upload_material(
@@ -393,8 +494,18 @@ def delete_material(
             detail="You can only delete files you uploaded",
         )
 
-    # Best-effort removal of the physical file; the DB row is the source of truth.
-    if material.file_url:
+    viewer_metadata = parse_aircraft_viewer_metadata(material.metadata_json)
+    if viewer_metadata:
+        try:
+            delete_package(viewer_metadata["viewer_package_id"])
+        except Exception as exc:
+            logger.exception("Failed to delete Aircraft Viewer package for material %s", material_id)
+            raise HTTPException(
+                status_code=500,
+                detail="Aircraft Viewer package could not be deleted; the record was preserved",
+            ) from exc
+    # Best-effort removal of a normal physical file; the DB row is the source of truth.
+    elif material.file_url:
         try:
             # get_storage_backend().delete(material.file_url)
             _get_storage_backend(material_type=material.material_type).delete(

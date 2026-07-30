@@ -7,7 +7,7 @@ import { getSummaryApiV1LibrarySummaryMaterialIdGet, getSummaryMindmapApiV1Libra
 
 export type MaterialType = 'general' | 'course' | 'personal' | 'course_master';
 export type UserRole = 'admin' | 'teacher' | 'student';
-export type ApprovedStatus = 'approved' | 'rejected' | 'pending';
+export type ApprovedStatus = 'approved' | 'rejected' | 'pending' | 'unknown';
 
 export interface User {
     id: number;
@@ -44,7 +44,16 @@ export interface FileVersion {
     summary_ts: string | null;
     pagesRead?: number;
     totalPages?: number;
+    aircraftViewer?: AircraftViewerMetadata;
 }
+
+export type AircraftViewerMetadata = {
+    content_kind: 'aircraft_viewer';
+    viewer_package_id: string;
+    viewer_entrypoint: string;
+    viewer_relative_root?: string;
+    source_filename?: string;
+};
 
 export interface FolderItem {
     id: string;

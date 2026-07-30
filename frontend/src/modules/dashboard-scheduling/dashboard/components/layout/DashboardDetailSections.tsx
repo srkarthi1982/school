@@ -1,9 +1,10 @@
 import type {
-  DashboardDetails,
+  AlertTone,
   ExportReadinessItem,
   PendingActionItem,
   WeakLessonItem,
 } from '../../types/dashboard';
+import type { DashboardDetails } from '../../../../../api/generated';
 import { useI18n } from "../../../../../infra/locales/I18nContext";
 import { Badge, Card, Metric, Panel } from '../common';
 import { DetailList, StatusTable } from '../tables';
@@ -11,6 +12,14 @@ import { DetailList, StatusTable } from '../tables';
 type DashboardDetailSectionsProps = {
   details: DashboardDetails;
 };
+
+const alertTones: AlertTone[] = ['success', 'warning', 'danger', 'info'];
+
+function toAlertTone(value: string): AlertTone {
+  return alertTones.includes(value as AlertTone)
+    ? value as AlertTone
+    : 'info';
+}
 
 export function DashboardDetailSections({details}: DashboardDetailSectionsProps) {
   const { t } = useI18n();
@@ -31,8 +40,8 @@ export function DashboardDetailSections({details}: DashboardDetailSectionsProps)
                     label={category.label}
                     value={category.value}
                   />
-                  <Badge tone={category.tone}>
-                    {t(`common.toneLabels.${category.tone}`)}
+                  <Badge tone={toAlertTone(category.tone)}>
+                    {t(`common.toneLabels.${toAlertTone(category.tone)}`)}
                   </Badge>
                 </div>
               </Card>
@@ -56,8 +65,8 @@ export function DashboardDetailSections({details}: DashboardDetailSectionsProps)
                     label={item.label}
                     value={item.value}
                   />
-                  <Badge tone={item.tone}>
-                    {t(`common.toneLabels.${item.tone}`)}
+                  <Badge tone={toAlertTone(item.tone)}>
+                    {t(`common.toneLabels.${toAlertTone(item.tone)}`)}
                   </Badge>
                 </Card>
               ))}
@@ -76,7 +85,10 @@ export function DashboardDetailSections({details}: DashboardDetailSectionsProps)
               status: t('dashboard.detailSections.tableHeaders.status'),
               nextStep: t('dashboard.detailSections.tableHeaders.nextStep')
             }}
-            rows={details.riskStatuses}
+            rows={details.riskStatuses.map((row) => ({
+              ...row,
+              riskLevel: row.riskLevel as AlertTone,
+            }))}
           />
         </Panel>
 
@@ -91,7 +103,10 @@ export function DashboardDetailSections({details}: DashboardDetailSectionsProps)
               }`
             }
             getTone={(item) => (item as ExportReadinessItem).status}
-            items={details.exportReadiness}
+            items={details.exportReadiness.map((item) => ({
+              ...item,
+              status: toAlertTone(item.status),
+            }))}
           />
         </Panel>
       </div>
@@ -120,7 +135,10 @@ export function DashboardDetailSections({details}: DashboardDetailSectionsProps)
               `${t('common.ownerPrefix')}: ${(item as PendingActionItem).owner}`
             }
             getTone={(item) => (item as PendingActionItem).tone}
-            items={details.pendingActions}
+            items={details.pendingActions.map((item) => ({
+              ...item,
+              tone: toAlertTone(item.tone),
+            }))}
           />
         </Panel>
       </div>

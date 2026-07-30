@@ -63,6 +63,12 @@ class Settings(BaseSettings):
 
     # Isolated internal 3D aircraft viewer
     AIRCRAFT_VIEWER_ENABLED: bool = True
+    SEVEN_ZIP_PATH: str = ""
+    AIRCRAFT_VIEWER_PACKAGE_MAX_BYTES: int = 500 * 1024 * 1024
+    AIRCRAFT_VIEWER_EXTRACTED_MAX_BYTES: int = 2 * 1024 * 1024 * 1024
+    AIRCRAFT_VIEWER_EXTRACTED_MAX_FILES: int = 20_000
+    AIRCRAFT_VIEWER_EXTRACTION_TIMEOUT_SECONDS: int = 180
+    AIRCRAFT_VIEWER_TOKEN_EXPIRE_SECONDS: int = 300
 
     # Chat attachments
     PRIVATE_UPLOAD_DIR: Path = Path(

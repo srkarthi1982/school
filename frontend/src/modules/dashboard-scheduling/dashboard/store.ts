@@ -23,8 +23,17 @@ export type DashboardFilterState = {
 export type AlertTone = 'success' | 'warning' | 'danger' | 'info';
 export type AlertItem = {
     id: string;
+    code: string;
     title: string;
     description?: string;
+    severity: 'info' | 'warning' | 'high' | 'critical';
+    dashboardRole: string;
+    entityType: string;
+    entityIdentifier: string;
+    currentValue?: string | null;
+    threshold?: string | null;
+    generatedTimestamp: string;
+    recommendedAction?: string | null;
     time: string;
     tone: AlertTone;
 };
@@ -109,6 +118,14 @@ type DashboardStore = {
     setFilters: (filters: Partial<DashboardFilterState>) => void;
 };
 let dashboardRequestId = 0;
+const filterChildren: Partial<Record<keyof DashboardFilterState, Array<keyof DashboardFilterState>>> = {
+    course: ['courseVersion', 'courseInstance', 'student', 'instructor', 'lesson', 'material', 'evaluationType'],
+    courseVersion: ['courseInstance', 'student', 'instructor', 'lesson', 'material', 'evaluationType'],
+    courseInstance: ['student', 'instructor', 'lesson', 'material', 'evaluationType'],
+    student: ['lesson', 'material', 'evaluationType'],
+    instructor: ['student', 'lesson', 'material', 'evaluationType'],
+    lesson: ['material', 'evaluationType'],
+};
 export const defaultDashboardFilters: DashboardFilterState = {
     report_type: 'leadership',
     course: 'all',
@@ -230,8 +247,17 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     },    
     setFilters: (filter) => {
         const { filters, getDashboardInfo } = get();
-        set(state => ({ filters: { ...state.filters, ...filter } }));
-        getDashboardInfo({ ...filters, ...filter });
+        const next = { ...filters, ...filter };
+        const changedKey = Object.keys(filter)[0] as keyof DashboardFilterState | undefined;
+        if (changedKey) {
+            for (const child of filterChildren[changedKey] ?? []) {
+                if (child === 'student' && filters.report_type === 'student') continue;
+                if (child === 'instructor' && filters.report_type === 'instructor') continue;
+                next[child] = defaultDashboardFilters[child] as never;
+            }
+        }
+        set({ filters: next });
+        void getDashboardInfo(next);
     },
     resetFilters: () => {
         const { filters, getDashboardInfo } = get();

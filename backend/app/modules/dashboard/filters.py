@@ -1,18 +1,16 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, distinct
+from sqlalchemy import select
 from app.modules.course_info.models import MasterAircraftType, MasterSimulatorType
-from app.modules.course_selection_material.models import CourseSelectionMaterialFile, CourseSelectionMaterialUserProgress
+from app.modules.course_selection_material.models import CourseSelectionMaterialFile
 from app.modules.evaluation.models import EvaluationLessonQuiz
 from app.modules.profile.models import Profile
 from app.modules.course.models import CourseEnrollment, CourseInstance, course_instructors
-from app.modules.attendance.models import Attendance
-from app.modules.attendance_status.models import AttendanceStatus
-from app.modules.it_support.models import Ticket
 # Imported lazily inside get_filter_options to avoid circular imports
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from .schemas import DashboardFilterState
+from .query import apply_course_instance_scope
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +55,7 @@ def get_student_options(db: Session, course_instance_ids: list[int]) -> list[dic
         .join(CourseEnrollment, CourseEnrollment.student_id == Profile.id)
         .where(CourseEnrollment.course_instance_id.in_(course_instance_ids))
         .distinct()
+        .order_by(Profile.first_name.asc().nulls_last(), Profile.id.asc())
     )
     rows = db.execute(stmt).all()
     return [{"label": "All students", "value": "all"}] + [
@@ -73,6 +72,7 @@ def get_instructor_options(db: Session, course_instance_ids: list[int]) -> list[
         .join(course_instructors, course_instructors.c.instructor_id == Profile.id)
         .where(course_instructors.c.course_instance_id.in_(course_instance_ids))
         .distinct()
+        .order_by(Profile.first_name.asc().nulls_last(), Profile.id.asc())
     )
     rows = db.execute(stmt).all()
     return [{"label": "All instructor", "value": "all"}] + [
@@ -93,6 +93,7 @@ def get_course_version_options(db: Session, course_instance_ids: list[int]) -> l
         .join(CourseInstance, CourseInstance.master_id == CourseMaster.id)
         .where(CourseInstance.id.in_(course_instance_ids))
         .distinct()
+        .order_by(CourseMaster.ctp_version.asc().nulls_last())
     )
     rows = db.execute(stmt).scalars().all()
     versions = sorted(v for v in rows if v)
@@ -110,6 +111,7 @@ def get_course_instance_options(db: Session, course_instance_ids: list[int]) -> 
     stmt = (
         select(CourseInstance.id, CourseInstance.title)
         .where(CourseInstance.id.in_(course_instance_ids))
+        .order_by(CourseInstance.title.asc().nulls_last(), CourseInstance.id.asc())
     )
     rows = db.execute(stmt).all()
     return [{"label": "All instance", "value": "all"}] + [
@@ -138,6 +140,10 @@ def get_lesson_options(db: Session, course_instance_ids: list[int]) -> list[dict
         )
         .where(CourseSelectionInfoLessonCreation.course_instance_id.in_(course_instance_ids))
         .distinct()
+        .order_by(
+            CourseSelectionInfoLessonCreationLesson.lesson_title.asc().nulls_last(),
+            CourseSelectionInfoLessonCreationLesson.id.asc(),
+        )
     )
     rows = db.execute(stmt).all()
     return [{"label": "All lessons", "value": "all"}] + [
@@ -195,7 +201,7 @@ def get_evaluation_type_options(db: Session, course_instance_ids: list[int] | No
         stmt = stmt.join(
             CourseInstance, EvaluationLessonQuiz.course_master_id == CourseInstance.master_id
         ).where(CourseInstance.id.in_(course_instance_ids))
-    stmt = stmt.distinct()
+    stmt = stmt.distinct().order_by(EvaluationLessonQuiz.assessment_type.asc())
     rows = db.execute(stmt).scalars().all()
     options = [{"label": "All evaluation types", "value": "all"}]
     for typ in rows:
@@ -211,6 +217,10 @@ def get_material_options(db: Session, course_instance_ids: list[int]) -> list[di
         select(CourseSelectionMaterialFile.id, CourseSelectionMaterialFile.filename)
         .where(CourseSelectionMaterialFile.course_instance_id.in_(course_instance_ids))
         .distinct()
+        .order_by(
+            CourseSelectionMaterialFile.filename.asc().nulls_last(),
+            CourseSelectionMaterialFile.id.asc(),
+        )
     )
     rows = db.execute(stmt).all()
     return [{"label": "All materials", "value": "all"}] + [
@@ -231,44 +241,39 @@ def get_filter_options(params: DashboardFilterState, db: Session = Depends(get_d
 
     personnel_resp = list_personnel_courses(db=db, user=user)
     courses = getattr(personnel_resp, "data", [])
+    visible_instance_ids = [c.id for c in courses]
+    visible_courses = db.execute(
+        select(CourseMaster.title)
+        .join(CourseInstance, CourseInstance.master_id == CourseMaster.id)
+        .where(
+            CourseInstance.id.in_(visible_instance_ids)
+            if visible_instance_ids
+            else CourseInstance.id == -1
+        )
+        .distinct()
+        .order_by(CourseMaster.title.asc().nulls_last())
+    ).scalars().all()
     course_options = [{"label": "All courses", "value": "all"}] + [
-        {"label": c.title, "value": str(c.id)} for c in courses
+        {"label": title, "value": title} for title in visible_courses
     ]
 
     # The universe of course instances the user may see (all their courses).
-    all_course_ids = [c.id for c in courses]
+    all_course_ids = visible_instance_ids
 
     # --- Resolve the course-instance set top-down through the chain ----------
     # Start from the user's full course-instance universe, then narrow by the
     # selected course (master), courseVersion, and courseInstance in order.
-    candidate_instance_ids = set(all_course_ids)
-
-    # 1. course (master) -> instances of that master
-    selected_course = _coerce_int(params.course)
-    if selected_course is not None:
-        if selected_course in all_course_ids:
-            candidate_instance_ids = {selected_course}
-        else:
-            candidate_instance_ids = set()
-
-    # 2. courseVersion -> instances whose master has that ctp_version
-    if params.courseVersion != "all":
-        version_instance_ids = set(
-            db.execute(
-                select(CourseInstance.id)
-                .join(CourseMaster, CourseInstance.master_id == CourseMaster.id)
-                .where(
-                    CourseMaster.ctp_version == params.courseVersion,
-                    CourseInstance.id.in_(candidate_instance_ids) if candidate_instance_ids else CourseInstance.id == -1,
-                )
-            ).scalars().all()
-        )
-        candidate_instance_ids = candidate_instance_ids & version_instance_ids
-
-    # 3. courseInstance -> the selected instance itself
-    selected_instance = _coerce_int(params.courseInstance)
-    if selected_instance is not None:
-        candidate_instance_ids = candidate_instance_ids & {selected_instance}
+    hierarchy_stmt = select(CourseInstance.id).where(
+        CourseInstance.id.in_(all_course_ids)
+        if all_course_ids
+        else CourseInstance.id == -1
+    )
+    hierarchy_stmt = apply_course_instance_scope(
+        hierarchy_stmt, params, include_instructor=False
+    )
+    candidate_instance_ids = set(
+        db.execute(hierarchy_stmt.order_by(CourseInstance.id)).scalars().all()
+    )
 
     # --- Narrow by instructor / student / lesson (lower in the chain) --------
     # instructor: the courses taught by the selected instructor
@@ -332,11 +337,23 @@ def get_filter_options(params: DashboardFilterState, db: Session = Depends(get_d
     version_options = get_course_version_options(db, instance_ids)
     instance_options = get_course_instance_options(db, instance_ids)
     lesson_options = get_lesson_options(db, instance_ids)
-    training_type_options = get_training_type_options()
     material_options = get_material_options(db, instance_ids)
     evaluation_type_options = get_evaluation_type_options(db, instance_ids)
-    aircraft_simulator_options = get_aircraft_simulator_options(db)
-    competency_options = get_competency_options()
+
+    # Identity filters are informational on self-service dashboards. Never
+    # advertise another identity that the server will not authorize.
+    if params.report_type == "student" and params.student != "all":
+        student_options = [
+            option
+            for option in student_options
+            if option["value"] == params.student
+        ]
+    if params.report_type == "instructor" and params.instructor != "all":
+        instructor_options = [
+            option
+            for option in instructor_options
+            if option["value"] == params.instructor
+        ]
 
     return [
         {"label": "Course", "key": "course", "options": course_options},
@@ -350,9 +367,6 @@ def get_filter_options(params: DashboardFilterState, db: Session = Depends(get_d
             {"label": "Last 7 days", "value": "7d"},
             {"label": "Last 30 days", "value": "30d"},
         ]},
-        {"label": "Training type", "key": "trainingType", "options": training_type_options},
-        {"label": "Competency", "key": "competency", "options": competency_options},
-        {"label": "Aircraft / Simulator", "key": "aircraftSimulator", "options": aircraft_simulator_options},
         {"label": "Material", "key": "material", "options": material_options},
         {"label": "Evaluation type", "key": "evaluationType", "options": evaluation_type_options},
     ]

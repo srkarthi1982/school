@@ -1,5 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from .schemas import DashboardFilterState
+from .policy import date_range_start, utc_now
+from .query import apply_course_instance_scope
 from app.modules.course.models import CourseInstance, course_instructors
 from app.modules.quiz_bank.models import QuizAttempt
 from app.modules.course_selection_schedule.lesson_content_models import CourseSelectionLessonRelease
@@ -19,16 +21,7 @@ from app.modules.course_master.models import CourseMaster
 
 def _date_range_start(params: DashboardFilterState | None):
     """Return the UTC datetime start of the selected date range, or None."""
-    if not params or params.dateRange == "all":
-        return None
-    now = datetime.utcnow()
-    if params.dateRange == "24h":
-        return now - timedelta(hours=24)
-    if params.dateRange == "7d":
-        return now - timedelta(days=7)
-    if params.dateRange == "30d":
-        return now - timedelta(days=30)
-    return None
+    return date_range_start(params.dateRange) if params else None
 
 
 def _apply_session_filters(stmt, params: DashboardFilterState | None):
@@ -52,19 +45,7 @@ def _apply_session_filters(stmt, params: DashboardFilterState | None):
 def _apply_course_filters(stmt, params: DashboardFilterState | None):
     """Apply courseInstance / courseVersion / instructor filters to a statement
     built on CourseInstance."""
-    if not params:
-        return stmt
-    if params.courseInstance != "all":
-        stmt = stmt.where(CourseInstance.id == int(params.courseInstance))
-    if params.courseVersion != "all":
-        stmt = stmt.join(CourseMaster, CourseInstance.master_id == CourseMaster.id).where(
-            CourseMaster.ctp_version == params.courseVersion
-        )
-    if params.instructor != "all":
-        stmt = stmt.join(
-            course_instructors, course_instructors.c.course_instance_id == CourseInstance.id
-        ).where(course_instructors.c.instructor_id == int(params.instructor))
-    return stmt
+    return apply_course_instance_scope(stmt, params)
 
 
 def _apply_quiz_filters(stmt, params: DashboardFilterState | None, eval_already_joined: bool = False):
@@ -108,7 +89,7 @@ def get_live_sessions_card(db: Session, user, params: DashboardFilterState = Non
     """
     Return a card dict for the instructor dashboard showing the number of live or scheduled sessions.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     stmt = (
         select(func.count(ClassSession.id))
         .where(
@@ -126,7 +107,6 @@ def get_live_sessions_card(db: Session, user, params: DashboardFilterState = Non
         "values": [],
         "value": f"{total:,}",
     }
-
 def get_instructor_workload_section(db: Session, params: DashboardFilterState = None) -> dict:
     """
     Returns the average planned teaching hours per instructor, applying optional
@@ -152,13 +132,11 @@ def get_instructor_workload_section(db: Session, params: DashboardFilterState = 
     avg_hours = round((total_seconds / 3600) / instructor_cnt, 1) if instructor_cnt else 0
 
     return {
-        "id": "instructor-009",
         "helperText": "Average planned teaching hours per instructor",
         "label": "Average workload",
         "statusLabel": "Live",
         "values": [],
         "value": f"{avg_hours} hrs",
-        "tone": "info",
     }
     
 def get_feedback_speed(db: Session, params: DashboardFilterState = None) -> dict:
@@ -166,7 +144,7 @@ def get_feedback_speed(db: Session, params: DashboardFilterState = None) -> dict
     Returns average ticket response time (in minutes) for resolved tickets within
     the selected date range. Applies the instructor filter (assigned_to_id).
     """
-    window_start = _date_range_start(params) or (datetime.utcnow() - timedelta(hours=24))
+    window_start = _date_range_start(params) or (utc_now() - timedelta(hours=24))
 
     stmt = (
         select(
@@ -185,21 +163,25 @@ def get_feedback_speed(db: Session, params: DashboardFilterState = None) -> dict
     avg_minutes = db.execute(stmt).scalar() or 0
     avg_minutes_int = int(round(avg_minutes))
 
-    helper_text = f"{avg_minutes_int} min avg response" if avg_minutes_int else ""
+    helper_text = (
+        f"{avg_minutes_int} min average created-to-resolved duration"
+        if avg_minutes_int
+        else "N/A: no resolved assigned support tickets"
+    )
 
     return {
         "helperText": helper_text,
-        "label": "Feedback speed",
+        "label": "Support ticket resolution duration",
         "statusLabel": "Live",
         "values": [],
-        "value": f"{avg_minutes_int} min",
+        "value": f"{avg_minutes_int} min" if avg_minutes_int else "N/A",
     }
 
 def get_active_instructors_strip(db: Session, params: DashboardFilterState = None) -> dict:
     """
     Returns the number of active instructors (distinct hosts with scheduled sessions).
     """
-    now = datetime.utcnow()
+    now = utc_now()
     stmt = (
         select(func.count(distinct(ClassSession.host_user_id)))
         .where(
@@ -321,7 +303,6 @@ def get_quiz_results_item(db: Session, params: DashboardFilterState = None) -> d
         "helperText": "Latest quiz completion and performance summary",
         "tone": "success",
     }
-
 def get_pending_evaluations_item(db: Session, params: DashboardFilterState = None) -> dict:
     """
     Returns the number of quiz attempts pending manual evaluation — i.e. attempts
@@ -360,6 +341,10 @@ def get_pending_attendance_item(db: Session, params: DashboardFilterState = None
         select(func.count(Attendance.id))
         .where(Attendance.level == 2)
     )
+    if params and params.instructor != "all":
+        stmt = stmt.join(Profile, Profile.user_id == Attendance.user_id).where(
+            Profile.id == int(params.instructor)
+        )
     pending_count = db.execute(stmt).scalar() or 0
 
     return {
@@ -375,8 +360,8 @@ def get_today_schedule_item(db: Session, params: DashboardFilterState = None) ->
     Returns the number of class sessions scheduled for today. Applies the
     instructor filter (host_user_id via Profile) when set.
     """
-    now = datetime.utcnow()
-    start_of_day = datetime(now.year, now.month, now.day)
+    now = utc_now()
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = start_of_day + timedelta(days=1)
 
     stmt = (
@@ -406,7 +391,7 @@ def get_completion_strip(db: Session, params: DashboardFilterState = None) -> di
     Completion = completed sessions (actual_end set and in the past) over total
     scheduled sessions. Applies instructor + date-range filters.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     # Total number of class sessions (scheduled or completed) in scope
     total_stmt = select(func.count(ClassSession.id))
     total_stmt = _apply_session_filters(total_stmt, params)
@@ -438,7 +423,7 @@ def get_lessons_delivered_strip(db: Session, params: DashboardFilterState = None
     Returns the total number of lessons delivered (completed class sessions) in
     scope. Applies instructor + date-range filters.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     stmt = (
         select(func.count(ClassSession.id))
         .where(
@@ -464,7 +449,7 @@ def get_upcoming_flight_bookings_item(db: Session, params: DashboardFilterState 
     (host_user_id via Profile). The date-range filter is backward-looking and
     does not apply to this forward-looking metric.
     """
-    now = datetime.utcnow()
+    now = utc_now()
     window_end = now + timedelta(days=7)
     stmt = select(func.count(ClassSession.id)).where(
         ClassSession.status == "SCHEDULED",
@@ -478,34 +463,23 @@ def get_upcoming_flight_bookings_item(db: Session, params: DashboardFilterState 
     count = db.execute(stmt).scalar() or 0
     return {
         "id": "instructor-007",
-        "label": "Upcoming flight/simulator bookings",
+        "label": "Upcoming scheduled sessions",
         "value": f"{count}",
-        "helperText": "Scheduled flight/simulator sessions in next 7 days",
+        "helperText": "Generic class sessions scheduled in the next 7 days",
         "tone": "info",
     }
 
 def get_external_instructor_coordination_alerts_item(db: Session, params: DashboardFilterState = None) -> dict:
     """
-    Return the number of open coordination alerts for external instructors.
-    Counts Ticket rows that are not resolved and have an assigned instructor.
-    Applies the instructor filter (assigned_to_id) and date range (on created_at).
+    Report the capability as unavailable. Support tickets are intentionally not
+    treated as external-instructor coordination records.
     """
-    stmt = select(func.count(Ticket.id)).where(
-        Ticket.status != "resolved",
-        Ticket.assigned_to_id.is_not(None),
-    )
-    if params and params.instructor != "all":
-        stmt = stmt.where(Ticket.assigned_to_id == int(params.instructor))
-    start = _date_range_start(params)
-    if start:
-        stmt = stmt.where(Ticket.created_at >= start)
-    count = db.execute(stmt).scalar() or 0
     return {
         "id": "instructor-008",
         "label": "External instructor coordination alerts",
-        "value": f"{count}",
-        "helperText": "Open coordination items with external instructors",
-        "tone": "warning",
+        "value": "N/A",
+        "helperText": "Unavailable: no external-instructor coordination data source",
+        "tone": "info",
     }
 
 def get_course_progress_status_item(db: Session, params: DashboardFilterState = None) -> dict:
@@ -534,4 +508,3 @@ def get_course_progress_status_item(db: Session, params: DashboardFilterState = 
         "helperText": "Current course pacing against plan",
         "tone": "success",
     }
-    
